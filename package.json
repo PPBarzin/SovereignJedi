@@ -15,10 +15,10 @@
   "scripts": {
     "bootstrap": "pnpm install",
     "test": "pnpm -r --reporter=default test",
-    "build": "pnpm -r --reporter=default build",
+    "build": "pnpm --filter \"packages/*\" -r build && pnpm --filter \"apps/*\" -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r --reporter=default typecheck",
-    "ci": "pnpm install && pnpm -r --reporter=default test && pnpm -r --reporter=default build",
+    "ci": "pnpm install && pnpm -r --reporter=default test && pnpm --filter \"packages/*\" -r build && pnpm --filter \"apps/*\" -r build",
     "dev:web": "pnpm --filter @sj/web dev",
     "clean": "rimraf node_modules pnpm-lock.yaml .pnpm-store"
   },
