@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  ipfs:
+    image: ipfs/go-ipfs:latest
+    container_name: sj-ipfs
+    restart: unless-stopped
+    # Expose standard IPFS ports:
+    ports:
+      - "4001:4001"       # swarm TCP
+      - "4001:4001/udp"   # swarm UDP (libp2p)
+      - "5001:5001"       # API (HTTP API)
+      - "8080:8080"       # Gateway (http)
+    volumes:
+      # Persist IPFS repo on the host so data survives container restarts
+      - ipfs_data:/data/ipfs
+    environment:
+      # Use the 'server' profile to disable UI and enable sensible defaults for a node
+      - IPFS_PROFILE=server
+    # Optional healthcheck to ensure the API is responding
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5001/api/v0/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  default:
+    name: sj-ipfs-net
+    driver: bridge
+
+volumes:
+  ipfs_data:
+    name: sj-ipfs-data

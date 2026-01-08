@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "bundler",
+    "moduleDetection": "legacy",
+    "baseUrl": ".",
+    "paths": {
+      "@sj/*": ["packages/*/src"],
+      "@web/*": ["apps/web/*"]
+    },
+    "rootDir": ".",
+    "outDir": "dist",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "resolveJsonModule": true,
+    "isolatedModules": false,
+    "types": ["node", "vitest/globals"]
+  },
+
+  "include": [
+    "packages/**/src",
+    "packages/**/tests",
+    "apps/**/src",
+    "apps/**/tests",
+    "scripts",
+    ".github",
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+
+  "exclude": ["node_modules", "dist", ".next"],
+
+  "references": [
+    { "path": "packages/crypto" },
+    { "path": "packages/storage" },
+    { "path": "apps/web" }
+  ]
+}

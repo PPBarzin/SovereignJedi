@@ -1,0 +1,47 @@
+{
+  "name": "@sj/storage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local encrypted storage for Sovereign Jedi — IndexedDB (Dexie) wrapper for manifests and envelopes",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "source": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --outDir dist",
+    "clean": "rimraf dist",
+    "test": "vitest --run",
+    "test:watch": "vitest --watch",
+    "lint": "eslint \"src/**/*.{ts,tsx,js}\" --fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "dexie": "^3.2.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.6",
+    "vitest": "^1.0.0",
+    "@types/node": "^18.0.0",
+    "rimraf": "^4.0.0",
+    "eslint": "^8.0.0",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^21.1.0"
+  },
+  "vitest": {
+    "setupFiles": ["tests/setupIndexedDB.ts"]
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

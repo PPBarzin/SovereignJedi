@@ -1,0 +1,6 @@
+# pnpm workspace configuration for Sovereign Jedi monorepo
+# Declares the packages that pnpm should treat as part of the workspace.
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "infra/*"

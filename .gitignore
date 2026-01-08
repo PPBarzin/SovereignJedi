@@ -1,0 +1,123 @@
+# SovereignJedi - root .gitignore
+#
+# Purpose:
+# - ignore local dev artifacts, build outputs, sensitive files and editor/OS metadata
+# - keep the repository clean while allowing required config (e.g. committed .npmrc) if needed
+#
+# Node / package managers
+node_modules/
+.pnp/
+.pnp.js
+# pnpm store and debug logs
+.pnpm-store/
+pnpm-debug.log*
+
+# Note: we intentionally do NOT ignore a project-level `.npmrc` here so a repo-managed .npmrc can be committed.
+# If you keep sensitive tokens in a local npmrc, add `.npmrc.local` to be ignored (see below).
+
+# Build outputs
+dist/
+build/
+.out/
+.next/
+.next/**       # Next.js build artifacts
+/.vercel/
+.next/cache/
+.vite/
+
+# TypeScript / compiler artifacts
+*.tsbuildinfo
+
+# Test coverage and reports
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files and secrets
+.env
+.env.local
+.env.*.local
+.env.test
+.env.production
+.env.development
+.env.docker
+*.secret
+*.key
+*.pem
+secrets/
+private/
+
+# Local npmrc variants (ignore local overrides containing secrets)
+.npmrc.local
+.npmrc.*.local
+
+# Editor directories and files
+.vscode/
+.history/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker / infra artifacts
+docker-compose.override.yml
+docker-compose.*.yml
+**/docker-compose.override.yml
+**/docker-compose.*.yml
+.docker/
+.dockerignore
+
+# IPFS / infra local data (if you mount host dir for ipfs persistence)
+infra/ipfs/ipfs_data/
+sj-ipfs-data/
+ipfs-data/
+
+# IDE / tooling caches
+.cache/
+.cache-loader/
+.vscode-test/
+
+# Temp files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+
+# Build system / bundler caches
+.cache/
+parcel-cache/
+.eslintcache
+jest-cache/
+ts-jest/
+
+# Generated docs, artifacts
+docs/.vuepress/dist
+docs/.vitepress/dist
+
+# Coverage and test artifacts
+jest-report/
+test-results.xml
+
+# Misc
+*.local
+*.log.*
+*.orig
+
+# Optional: ignore lockfiles from other package managers if present
+package-lock.json
+yarn.lock
+
+# If you create local overrides for CI or secrets use a specific pattern, add them above.
+# End of file
