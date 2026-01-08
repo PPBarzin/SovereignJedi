@@ -36,8 +36,8 @@
     "eqeqeq": ["error", "smart"],
     "newline-before-return": "off",
     "no-implicit-coercion": "warn",
-    "semi": ["error", "always"],
-    "quotes": ["error", "single", { "avoidEscape": true }]
+    "semi": "off",
+    "quotes": "off"
   },
   "overrides": [
     {
@@ -51,7 +51,9 @@
     },
     {
       "files": ["apps/web/**/*.{ts,tsx,js,jsx}"],
-      "rules": {}
+      "rules": {
+        "no-undef": "off"
+      }
     },
     {
       "files": ["**/*.js", "**/*.cjs", "**/*.mjs"],

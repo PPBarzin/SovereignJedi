@@ -19,7 +19,7 @@
     "clean": "rimraf dist",
     "test": "vitest --run",
     "test:watch": "vitest --watch",
-    "lint": "echo \"skipping eslint in CI for package @sj/storage (run local lint manually)\"",
+    "lint": "eslint \"src/**/*.{ts,tsx,js}\" --fix --max-warnings=0",
     "typecheck": "tsc --noEmit"
   },
   "files": [
