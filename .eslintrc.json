@@ -1,0 +1,70 @@
+{
+  "root": true,
+  "env": {
+    "es2022": true,
+    "node": true,
+    "browser": true
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    ".next/",
+    ".vercel/",
+    ".pnpm-store/",
+    "pnpm-lock.yaml",
+    "coverage/",
+    "build/"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    },
+    "project": [
+      "./tsconfig.json",
+      "./apps/*/tsconfig.json",
+      "./packages/*/tsconfig.json"
+    ]
+  },
+  "extends": ["eslint:recommended"],
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error", "info"] }],
+    "prefer-const": "error",
+    "no-var": "error",
+    "eqeqeq": ["error", "smart"],
+    "newline-before-return": "off",
+    "no-implicit-coercion": "warn",
+    "semi": ["error", "always"],
+    "quotes": ["error", "single", { "avoidEscape": true }]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.ts", "**/*.tsx"],
+      "env": {
+        "browser": true,
+        "node": true,
+        "es2022": true
+      },
+      "rules": {}
+    },
+    {
+      "files": ["apps/web/**/*.{ts,tsx,js,jsx}"],
+      "rules": {}
+    },
+    {
+      "files": ["**/*.js", "**/*.cjs", "**/*.mjs"],
+      "env": {
+        "node": true,
+        "es2022": true
+      },
+      "rules": {}
+    }
+  ],
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  }
+}

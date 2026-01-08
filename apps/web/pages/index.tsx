@@ -41,24 +41,32 @@ function concatUint8(arrs: Uint8Array[]) {
 }
 
 async function ipfsAdd(blob: Blob): Promise<string> {
-  // Minimal IPFS /add via HTTP API. Returns CID string (Hash).
-  // If IPFS is not reachable, we throw and the caller can fall back to a simulated CID.
-  const url = `${IPFS_API_BASE}/add`
+  // Use the local Next.js API proxy to avoid browser CORS issues:
+  // POST -> /api/ipfs/add (server-side endpoint forwards to http://127.0.0.1:5001/api/v0/add)
+  const url = `/api/ipfs/add`
   const form = new FormData()
   form.append('file', blob, 'encrypted.bin')
   const res = await fetch(url, {
     method: 'POST',
     body: form,
   })
+
   if (!res.ok) {
-    throw new Error(`IPFS add failed: ${res.status} ${res.statusText}`)
+    // Read any response body to provide a useful error
+    let bodyText = ''
+    try {
+      bodyText = await res.text()
+    } catch {
+      bodyText = ''
+    }
+    throw new Error(`IPFS add (proxy) failed: ${res.status} ${res.statusText} ${bodyText}`)
   }
+
   const text = await res.text()
-  // go-ipfs API returns JSON lines; parse the last non-empty line
+  // go-ipfs (proxied) usually returns JSON lines; parse the last non-empty line
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
   if (lines.length === 0) throw new Error('IPFS returned empty response')
   const last = lines[lines.length - 1]
-  // Each line should be a JSON object like {"Name":"...","Hash":"Qm...","Size":"..."}
   try {
     const parsed = JSON.parse(last)
     return parsed.Hash ?? parsed.Key ?? parsed.cid ?? ''
@@ -111,12 +119,16 @@ export default function Home(): JSX.Element {
       fileCid = await ipfsAdd(blob)
       setCid(fileCid)
       setStatus(`Uploaded to IPFS: ${fileCid}`)
-    } catch (err) {
-      // IPFS not available — simulate a local CID to still exercise storage
+    } catch (err: any) {
+      // IPFS add failed (proxy unreachable or error). Make fallback explicit and surface the error.
+      const errMsg = String(err?.message ?? err)
       const simulated = `SIMULATED-${toHex(cryptoAPI.cryptoGetRandomBytes(8))}`
       fileCid = simulated
       setCid(simulated)
-      setStatus(`IPFS unavailable — using simulated CID: ${simulated}`)
+      // Show the IPFS error and clearly indicate we're in simulation/fallback mode
+      setStatus(`IPFS add failed: ${errMsg}. FALLBACK MODE: using simulated CID ${simulated}`)
+      // Optionally log the error for debugging (keeps the UI explicit)
+      // console.error('IPFS add error (fallback simulated):', err)
     }
 
     setStatus('Preparing encrypted manifest and storing in IndexedDB')
