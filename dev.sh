@@ -24,8 +24,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_DIR="${REPO_ROOT}/apps/web"
 DEV_LOG="${REPO_ROOT}/dev-web.log"
-WEB_URL="http://localhost:3000"
-WEB_PORT=3000
+WEB_URL="http://localhost:6969"
+WEB_PORT=6969
 IPFS_API="http://127.0.0.1:5001/api/v0"
 IPFS_VERSION_ENDPOINT="${IPFS_API}/version"
 IPFS_COMPOSE_FILE="${REPO_ROOT}/infra/ipfs/docker-compose.yml"
@@ -261,7 +261,7 @@ fi
 
 # Success: print the exact required message, then tail logs
 printf '\n'
-printf '✅ Dev server is up and healthy at: http://localhost:3000\n'
+printf '✅ Dev server is up and healthy at: http://localhost:6969\n'
 printf '\n'
 
 # Tail logs (until interrupted). We run tail in foreground so script stays alive and logs visible.
