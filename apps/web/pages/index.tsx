@@ -1,257 +1,489 @@
 'use client'
 
-import React, { useState } from 'react'
-import cryptoAPI from '@sj/crypto'
-import storageAPI from '@sj/storage'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 
-/**
- * apps/web — index page
- *
- * Replaced inline ad-hoc crypto with real imports from `@sj/crypto` and `@sj/storage`.
- * Adds a minimal IPFS client stub that talks to a local go-ipfs HTTP API (default: http://127.0.0.1:5001/api/v0).
- *
- * Flow (minimal demo for Scope 1):
- *  - Select file -> read bytes
- *  - Generate per-file symmetric key (raw 32 bytes) using `cryptoAPI.cryptoGetRandomBytes`
- *  - Encrypt file content with `cryptoAPI.encryptAesGcmWithRawKey`
- *  - Upload encrypted file (iv + ciphertext) to IPFS via HTTP API `/add` -> receive CID (if IPFS is running)
- *  - Create a small manifest { fileName, cid } and encrypt it with a manifestKey (random 32 bytes)
- *  - Persist encrypted manifest in IndexedDB using `storageAPI.putManifest`
- *  - Provide a simple retrieval button to read, decrypt and display stored manifest
- *
- * NOTE: This is a demo stub for Scope 1. No wallet or signature flows are implemented (Scope 2).
- */
+type UiState = 'idle' | 'loading' | 'success' | 'error'
 
-const IPFS_API_BASE = process.env.NEXT_PUBLIC_IPFS_API_URL ?? 'http://127.0.0.1:5001/api/v0'
-
-function toHex(buffer: ArrayBuffer | Uint8Array) {
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')
+type MockFileRow = {
+  id: string
+  name: string
+  size: string
+  status: 'Processing' | 'Ready' | 'Error'
+  cid?: string
 }
 
-function concatUint8(arrs: Uint8Array[]) {
-  const total = arrs.reduce((s, a) => s + a.length, 0)
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const a of arrs) {
-    out.set(a, offset)
-    offset += a.length
-  }
-  return out
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
-async function ipfsAdd(blob: Blob): Promise<string> {
-  // Use the local Next.js API proxy to avoid browser CORS issues:
-  // POST -> /api/ipfs/add (server-side endpoint forwards to http://127.0.0.1:5001/api/v0/add)
-  const url = `/api/ipfs/add`
-  const form = new FormData()
-  form.append('file', blob, 'encrypted.bin')
-  const res = await fetch(url, {
-    method: 'POST',
-    body: form,
-  })
+function mockCid(): string {
+  // simple readable mock CID
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz234567'
+  const rand = (n: number) =>
+    Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')
+  return `bafy${rand(10)}${rand(10)}${rand(10)}`
+}
 
-  if (!res.ok) {
-    // Read any response body to provide a useful error
-    let bodyText = ''
-    try {
-      bodyText = await res.text()
-    } catch {
-      bodyText = ''
-    }
-    throw new Error(`IPFS add (proxy) failed: ${res.status} ${res.statusText} ${bodyText}`)
-  }
-
-  const text = await res.text()
-  // go-ipfs (proxied) usually returns JSON lines; parse the last non-empty line
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
-  if (lines.length === 0) throw new Error('IPFS returned empty response')
-  const last = lines[lines.length - 1]
-  try {
-    const parsed = JSON.parse(last)
-    return parsed.Hash ?? parsed.Key ?? parsed.cid ?? ''
-  } catch (err) {
-    // If parsing fails, return the raw line as fallback
-    return last
-  }
+function mockWalletAddress(): string {
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+  const rand = (n: number) =>
+    Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')
+  return `${rand(4)}...${rand(4)}`
 }
 
 export default function Home(): JSX.Element {
-  const [fileName, setFileName] = useState<string | null>(null)
-  const [status, setStatus] = useState<string>('Idle')
-  const [cid, setCid] = useState<string | null>(null)
-  const [storedManifest, setStoredManifest] = useState<any | null>(null)
+  const [walletConnected, setWalletConnected] = useState(false)
+  const [walletAddress, setWalletAddress] = useState<string | null>(null)
 
-  // ephemeral manifestKey used only for demo to encrypt/decrypt the manifest
-  // In a real system this would be derived from a wallet signature (Scope 2).
-  const [manifestKey, setManifestKey] = useState<Uint8Array | null>(null)
+  const [uiState, setUiState] = useState<UiState>('idle')
+  const [dragActive, setDragActive] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  async function handleFile(file: File | null) {
-    setCid(null)
-    setStoredManifest(null)
+  const [files, setFiles] = useState<MockFileRow[]>([
+    {
+      id: 'init-1',
+      name: 'product-vision.pdf',
+      size: '342 KB',
+      status: 'Ready',
+      cid: mockCid(),
+    },
+    {
+      id: 'init-2',
+      name: 'screenshot.png',
+      size: '1.2 MB',
+      status: 'Ready',
+      cid: mockCid(),
+    },
+  ])
 
-    if (!file) {
-      setFileName(null)
-      setStatus('Idle')
-      return
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  const headerStatus = useMemo(() => {
+    if (!walletConnected) return 'Not connected (mock)'
+    return `Connected: ${walletAddress}`
+  }, [walletConnected, walletAddress])
+
+  const onConnectToggle = useCallback(() => {
+    if (walletConnected) {
+      setWalletConnected(false)
+      setWalletAddress(null)
+    } else {
+      setWalletConnected(true)
+      setWalletAddress(mockWalletAddress())
     }
+  }, [walletConnected])
 
-    setFileName(file.name)
-    setStatus('Reading file')
+  const handleSelectClick = useCallback(() => {
+    inputRef.current?.click()
+  }, [])
 
-    const arrayBuffer = await file.arrayBuffer()
-    const fileBytes = new Uint8Array(arrayBuffer)
+  const processFile = useCallback((file: File) => {
+    // Visual states
+    setUiState('loading')
+    setErrorMsg(null)
 
-    setStatus('Generating per-file symmetric key')
-    // per-file raw AES key bytes (32 bytes)
-    const perFileKey = cryptoAPI.cryptoGetRandomBytes(32)
-
-    setStatus('Encrypting file (AES-GCM)')
-    const { iv, ciphertext } = await cryptoAPI.encryptAesGcmWithRawKey(perFileKey, fileBytes)
-
-    // Combine iv + ciphertext for upload
-    const combined = concatUint8([iv, ciphertext])
-    const blob = new Blob([combined], { type: 'application/octet-stream' })
-
-    setStatus('Uploading encrypted file to IPFS (stub)')
-    let fileCid: string | null = null
-    try {
-      fileCid = await ipfsAdd(blob)
-      setCid(fileCid)
-      setStatus(`Uploaded to IPFS: ${fileCid}`)
-    } catch (err: any) {
-      // IPFS add failed (proxy unreachable or error). Make fallback explicit and surface the error.
-      const errMsg = String(err?.message ?? err)
-      const simulated = `SIMULATED-${toHex(cryptoAPI.cryptoGetRandomBytes(8))}`
-      fileCid = simulated
-      setCid(simulated)
-      // Show the IPFS error and clearly indicate we're in simulation/fallback mode
-      setStatus(`IPFS add failed: ${errMsg}. FALLBACK MODE: using simulated CID ${simulated}`)
-      // Optionally log the error for debugging (keeps the UI explicit)
-      // console.error('IPFS add error (fallback simulated):', err)
+    // Add a temporary row with Processing state
+    const tempId = `row-${Date.now()}`
+    const newRow: MockFileRow = {
+      id: tempId,
+      name: file.name,
+      size: formatBytes(file.size),
+      status: 'Processing',
     }
+    setFiles((prev) => [newRow, ...prev])
 
-    setStatus('Preparing encrypted manifest and storing in IndexedDB')
+    // Simulate processing delay and outcome
+    const simulateMs = 1200 + Math.floor(Math.random() * 800)
+    const shouldError = Math.random() < 0.08 // ~8% error to show the state exists
 
-    // Create manifest JSON and encrypt it with a manifestKey (ephemeral here)
-    const manifest = {
-      fileName: file.name,
-      cid: fileCid,
-      createdAt: new Date().toISOString(),
-    }
-    const manifestJson = JSON.stringify(manifest)
-    const manifestBytes = new TextEncoder().encode(manifestJson)
-
-    // create or reuse manifestKey for demo
-    const mk = manifestKey ?? cryptoAPI.cryptoGetRandomBytes(32)
-    setManifestKey(mk)
-
-    const { iv: mIv, ciphertext: mCt } = await cryptoAPI.encryptAesGcmWithRawKey(mk, manifestBytes)
-    const manifestBlob = concatUint8([mIv, mCt])
-    const manifestB64 = storageAPI.toBase64(manifestBlob)
-
-    // persist using storage API
-    try {
-      storageAPI.initStorage()
-      await storageAPI.putManifest('local-dev-wallet', manifestB64, fileCid)
-      setStatus('Manifest stored in local IndexedDB (encrypted)')
-    } catch (err: any) {
-      console.error('storage putManifest error', err)
-      setStatus(`Failed to store manifest locally: ${err?.message ?? String(err)}`)
-    }
-  }
-
-  async function retrieveAndDecryptManifest() {
-    setStatus('Retrieving manifest from local storage')
-    try {
-      storageAPI.initStorage()
-      const payload = await storageAPI.getManifest('local-dev-wallet')
-      if (!payload) {
-        setStoredManifest(null)
-        setStatus('No manifest found for wallet')
+    window.setTimeout(() => {
+      if (shouldError) {
+        setFiles((prev) =>
+          prev.map((r) => (r.id === tempId ? { ...r, status: 'Error', cid: undefined } : r)),
+        )
+        setUiState('error')
+        setErrorMsg('Something went wrong. Please try again.')
         return
       }
-      const encryptedB64 = payload.encryptedManifestB64
-      const bytes = storageAPI.fromBase64(encryptedB64)
-      // assume iv is first 12 bytes (AES-GCM)
-      const iv = bytes.slice(0, 12)
-      const ct = bytes.slice(12)
-      if (!manifestKey) {
-        setStatus('No manifestKey available in session to decrypt (demo limitation).')
-        return
-      }
-      const plain = await cryptoAPI.decryptAesGcmWithRawKey(manifestKey, iv, ct)
-      const json = new TextDecoder().decode(plain)
-      setStoredManifest(JSON.parse(json))
-      setStatus('Manifest retrieved and decrypted (demo)')
-    } catch (err: any) {
-      console.error('retrieve error', err)
-      setStatus(`Error retrieving/decrypting manifest: ${err?.message ?? String(err)}`)
-    }
+      setFiles((prev) =>
+        prev.map((r) => (r.id === tempId ? { ...r, status: 'Ready', cid: mockCid() } : r)),
+      )
+      setUiState('success')
+      setErrorMsg(null)
+    }, simulateMs)
+  }, [])
+
+  const onDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setDragActive(false)
+      const f = e.dataTransfer.files && e.dataTransfer.files[0]
+      if (f) processFile(f)
+    },
+    [processFile],
+  )
+
+  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(true)
+  }, [])
+
+  const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+  }, [])
+
+  const onInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files && e.target.files[0]
+      if (f) processFile(f)
+      e.currentTarget.value = '' // reset to allow re-selecting same file
+    },
+    [processFile],
+  )
+
+  const StateBadge = ({ state }: { state: UiState }) => {
+    const color =
+      state === 'idle'
+        ? '#64748b'
+        : state === 'loading'
+        ? '#0ea5e9'
+        : state === 'success'
+        ? '#10b981'
+        : '#ef4444'
+    const label =
+      state === 'idle' ? 'Idle' : state === 'loading' ? 'Processing…' : state === 'success' ? 'Done' : 'Error'
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          background: '#f1f5f9',
+          border: `1px solid ${color}`,
+          color,
+          padding: '6px 10px',
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: 0.2,
+        }}
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 99,
+            background: color,
+            display: 'inline-block',
+          }}
+        />
+        {label}
+      </span>
+    )
   }
 
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files && e.target.files[0]
-    void handleFile(f ?? null)
+  const StatusPill = ({ status }: { status: MockFileRow['status'] }) => {
+    const colors =
+      status === 'Ready'
+        ? { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' }
+        : status === 'Processing'
+        ? { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' }
+        : { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' }
+    return (
+      <span
+        style={{
+          padding: '4px 8px',
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 600,
+          background: colors.bg,
+          color: colors.text,
+          border: `1px solid ${colors.border}`,
+        }}
+      >
+        {status}
+      </span>
+    )
   }
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', padding: 32 }}>
-      <h1>Sovereign Jedi — Web (Scope 1 Demo)</h1>
-
-      <section style={{ marginTop: 16, padding: 16, border: '1px solid #e6edf3', borderRadius: 8 }}>
-        <h2>File encrypt → IPFS → local encrypted manifest (IndexedDB)</h2>
-        <p style={{ color: '#444' }}>
-          This demo uses the shared packages <code>@sj/crypto</code> and <code>@sj/storage</code>.
-          It encrypts the selected file locally, attempts to upload the encrypted blob to a local IPFS node,
-          then stores an encrypted manifest in IndexedDB via Dexie.
-        </p>
-
-        <div style={{ marginTop: 12 }}>
-          <label style={{ display: 'block', marginBottom: 8 }}>
-            Select a file:
-          </label>
-          <input type="file" onChange={handleInputChange} />
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <strong>Status:</strong> <span>{status}</span>
-        </div>
-
-        {fileName && (
-          <div style={{ marginTop: 12 }}>
-            <div><strong>Last file:</strong> {fileName}</div>
-            {cid && <div><strong>CID:</strong> <code style={{ fontFamily: 'monospace' }}>{cid}</code></div>}
-            {manifestKey && <div><strong>Manifest key (hex, session only):</strong> <code style={{ fontFamily: 'monospace' }}>{toHex(manifestKey)}</code></div>}
+    <div style={{ fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif', background: '#0b1220', minHeight: '100vh' }}>
+      {/* Header */}
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          background: 'rgba(14, 23, 42, 0.9)',
+          backdropFilter: 'blur(8px)',
+          borderBottom: '1px solid #1e293b',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 980,
+            margin: '0 auto',
+            padding: '12px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            color: '#e2e8f0',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              aria-hidden
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                background:
+                  'conic-gradient(from 180deg at 50% 50%, #22d3ee 0deg, #22c55e 120deg, #a78bfa 240deg, #22d3ee 360deg)',
+                boxShadow: '0 0 20px rgba(34, 211, 238, 0.25)',
+              }}
+            />
+            <strong style={{ fontSize: 16, letterSpacing: 0.4 }}>Sovereign Jedi</strong>
           </div>
-        )}
 
-        <div style={{ marginTop: 12 }}>
-          <button onClick={() => void retrieveAndDecryptManifest()} style={{ padding: '8px 12px', marginRight: 8 }}>
-            Retrieve & decrypt stored manifest
-          </button>
-          <button onClick={() => { setStoredManifest(null); setStatus('Idle') }} style={{ padding: '8px 12px' }}>
-            Reset view
-          </button>
-        </div>
-
-        {storedManifest && (
-          <div style={{ marginTop: 12, padding: 8, background: '#f8fafc', borderRadius: 6 }}>
-            <strong>Stored manifest (decrypted):</strong>
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{JSON.stringify(storedManifest, null, 2)}</pre>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span
+              style={{
+                color: walletConnected ? '#10b981' : '#94a3b8',
+                fontSize: 12,
+                background: '#0f172a',
+                border: '1px solid #1e293b',
+                padding: '6px 10px',
+                borderRadius: 8,
+              }}
+            >
+              Wallet: {headerStatus}
+            </span>
+            <button
+              onClick={onConnectToggle}
+              style={{
+                appearance: 'none',
+                border: '1px solid #334155',
+                background: '#111827',
+                color: '#e5e7eb',
+                borderRadius: 8,
+                padding: '8px 12px',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {walletConnected ? 'Disconnect (mock)' : 'Connect Wallet (mock)'}
+            </button>
           </div>
-        )}
-      </section>
+        </div>
+      </header>
 
-      <section style={{ marginTop: 24 }}>
-        <h3>Notes & next steps</h3>
-        <ul>
-          <li>This page now imports and uses <code>@sj/crypto</code> and <code>@sj/storage</code> directly.</li>
-          <li>IPFS calls go to <code>{IPFS_API_BASE}</code> by default — run the local Docker Compose in <code>infra/ipfs</code> to enable real uploads.</li>
-          <li>No wallet/signature flows are included here (Scope 2). The manifest key is a session-only random key to exercise encryption/decryption and storage integration.</li>
-          <li>When this flow compiles and runs locally (and you see a stored manifest decrypted), we can commit all changes and open the PR for Scope 1.</li>
-        </ul>
-      </section>
+      {/* Main */}
+      <main style={{ maxWidth: 980, margin: '0 auto', padding: '24px 20px' }}>
+        {/* Drag & Drop card */}
+        <section
+          style={{
+            background: 'linear-gradient(180deg, #0b1220 0%, #0b1220 60%, rgba(15,23,42,0.8) 100%)',
+            border: '1px solid #1f2a44',
+            borderRadius: 16,
+            padding: 20,
+            color: '#cbd5e1',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18, color: '#e2e8f0' }}>Add a file</h2>
+              <p style={{ margin: '6px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
+                Drag & drop your file below (or click to select).
+              </p>
+            </div>
+            <StateBadge state={uiState} />
+          </div>
+
+          <div
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onClick={handleSelectClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') handleSelectClick()
+            }}
+            aria-label="Drop a file to encrypt or click to select"
+            style={{
+              userSelect: 'none',
+              cursor: 'pointer',
+              border: dragActive ? '2px dashed #22d3ee' : '2px dashed #334155',
+              background: dragActive ? 'rgba(34,211,238,0.06)' : '#0f172a',
+              borderRadius: 14,
+              padding: '40px 16px',
+              transition: 'all 120ms ease',
+            }}
+          >
+            <div style={{ display: 'grid', placeItems: 'center', gap: 12 }}>
+              <div
+                aria-hidden
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  background: dragActive
+                    ? 'linear-gradient(135deg, #22d3ee 0%, #a78bfa 100%)'
+                    : 'linear-gradient(135deg, #1e293b 0%, #0b1220 100%)',
+                  border: '1px solid #1e293b',
+                  display: 'grid',
+                  placeItems: 'center',
+                  boxShadow: dragActive ? '0 0 30px rgba(34,211,238,0.25)' : 'none',
+                }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke={dragActive ? '#0b1220' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M20 21H4" stroke={dragActive ? '#0b1220' : '#94a3b8'} strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ color: '#e2e8f0', fontWeight: 700, letterSpacing: 0.2 }}>Drop a file to encrypt</div>
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>[ or click to select ]</div>
+              </div>
+
+              {/* Progress bar for loading */}
+              {uiState === 'loading' && (
+                <div style={{ width: 320, maxWidth: '90%', height: 8, background: '#0b1220', borderRadius: 8, border: '1px solid #1e293b', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: '65%',
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #22d3ee, #a78bfa)',
+                      boxShadow: '0 0 12px rgba(167,139,250,0.4)',
+                      animation: 'progressPulse 1.2s ease-in-out infinite',
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Success capsule */}
+              {uiState === 'success' && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    border: '1px solid #134e4a',
+                    background: '#052e2b',
+                    color: '#34d399',
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: '#34d399', display: 'inline-block' }} />
+                  File added
+                </div>
+              )}
+
+              {/* Error capsule */}
+              {uiState === 'error' && (
+                <div
+                  role="alert"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    border: '1px solid #7f1d1d',
+                    background: '#2b0b0b',
+                    color: '#fca5a5',
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: '#ef4444', display: 'inline-block' }} />
+                  {errorMsg ?? 'Something went wrong'}
+                </div>
+              )}
+            </div>
+
+            {/* Hidden file input */}
+            <input
+              ref={inputRef}
+              type="file"
+              onChange={onInputChange}
+              style={{ display: 'none' }}
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+          </div>
+        </section>
+
+        {/* My Files (mock) */}
+        <section
+          style={{
+            marginTop: 20,
+            background: '#0f172a',
+            border: '1px solid #1f2a44',
+            borderRadius: 16,
+            padding: 16,
+            color: '#cbd5e1',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: '#e2e8f0' }}>My files (mock)</h3>
+            <div style={{ color: '#94a3b8', fontSize: 12 }}>{files.length} items</div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: '#94a3b8', fontSize: 12 }}>
+                  <th style={{ padding: '10px 8px', borderBottom: '1px solid #1f2a44' }}>File name</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '1px solid #1f2a44' }}>Size</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '1px solid #1f2a44' }}>Status</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '1px solid #1f2a44' }}>CID (mock)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {files.map((row) => (
+                  <tr key={row.id} style={{ borderBottom: '1px solid #0b1220' }}>
+                    <td style={{ padding: '10px 8px', color: '#e5e7eb', fontWeight: 600 }}>{row.name}</td>
+                    <td style={{ padding: '10px 8px', color: '#94a3b8', fontSize: 13 }}>{row.size}</td>
+                    <td style={{ padding: '10px 8px' }}>
+                      <StatusPill status={row.status} />
+                    </td>
+                    <td style={{ padding: '10px 8px', color: '#94a3b8', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace', fontSize: 12 }}>
+                      {row.cid ? <code>{row.cid}</code> : <span style={{ color: '#64748b' }}>–</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Footnote */}
+        <section style={{ marginTop: 24, color: '#64748b', fontSize: 12, textAlign: 'center' }}>
+          <div>This is a product demo UI (mocked). No external services are required.</div>
+        </section>
+      </main>
+
+      {/* Keyframes (inline) */}
+      <style>{`
+        @keyframes progressPulse {
+          0% { transform: translateX(-30%); }
+          50% { transform: translateX(10%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
     </div>
   )
 }
