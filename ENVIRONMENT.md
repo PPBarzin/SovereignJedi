@@ -20,7 +20,7 @@ The provided `./dev.sh` script offers a one-command developer flow to start the 
 ---
 
 ## Ports used
-- Next.js dev server: http://localhost:6969
+- Next.js dev server: http://localhost:1620
 - IPFS HTTP API (when running via docker compose): http://127.0.0.1:5001/api/v0
 
 The web UI is a Scope‑2 mock: IPFS is optional and the UI will start even if IPFS is not available.
@@ -49,7 +49,7 @@ Behavior:
 
 On successful web startup the script will print exactly:
 ```
-✅ Dev server is up and healthy at: http://localhost:6969
+✅ Dev server is up and healthy at: http://localhost:1620
 ```
 
 ---

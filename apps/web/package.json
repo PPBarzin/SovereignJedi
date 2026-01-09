@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "dev": "next dev -p 6969",
+    "dev": "next dev -p 1620",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
