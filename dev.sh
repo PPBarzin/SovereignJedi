@@ -107,7 +107,7 @@ fi
 
 # Run install
 info "Running pnpm install (repo root)..."
-pnpm install || die "pnpm install failed"
+pnpm install --ignore-scripts || die "pnpm install failed"
 
 # If --with-ipfs: ensure docker, start compose, wait for IPFS
 if [ "$MODE_WITH_IPFS" -eq 1 ]; then
@@ -260,6 +260,17 @@ if [ "$WEB_OK" -ne 1 ]; then
 fi
 
 # Success: print the exact required message, then tail logs
+# If IPFS is not available, explicitly notify the user that we are running in mock mode
+if [ "${MODE_WITH_IPFS:-0}" -eq 1 ]; then
+  if [ "${IPFS_OK:-0}" -ne 1 ]; then
+    printf '⚠️ IPFS unavailable — running in mock mode\n\n'
+  fi
+else
+  if [ "${IPFS_PRESENT:-0}" -ne 1 ]; then
+    printf '⚠️ IPFS unavailable — running in mock mode\n\n'
+  fi
+fi
+
 printf '\n'
 printf '✅ Dev server is up and healthy at: http://localhost:6969\n'
 printf '\n'
