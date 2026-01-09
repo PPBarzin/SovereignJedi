@@ -42,7 +42,7 @@ const darkTokens = {
   pageBg: '#0b1220',
   text: '#e2e8f0',
   subtext: '#94a3b8',
-  border: '#1f2a44',
+  border: '#334155',
   panelBg: '#0f172a',
   headerBg: 'rgba(14, 23, 42, 0.9)',
   headerFg: '#e2e8f0',
@@ -528,6 +528,26 @@ export default function Home(): JSX.Element {
 
           {/* File list (no CID here) */}
           <div
+            onClick={openPicker}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? openPicker() : null)}
+            style={{
+              ...styles.dropEmpty,
+              border: `2px dashed ${t.border}`,
+              background: theme === 'light' ? '#fff' : '#0f172a',
+              color: t.subtext,
+              marginBottom: 12,
+              padding: 16,
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ fontSize: 14 }}>
+              <strong style={{ color: t.text }}>Drop a file</strong>{' '}
+              <span style={{ color: t.subtext }}>(or click to select)</span>
+            </div>
+          </div>
+          <div
             style={{
               marginTop: 16,
               background: t.panelBg,
@@ -672,7 +692,7 @@ export default function Home(): JSX.Element {
               <Field label="Status">{activeFile.status}</Field>
               <Field label="Date">{new Date(activeFile.dateISO).toLocaleString()}</Field>
 
-              <Divider t={t} />
+              <div style={{ height: 1, background: t.border, margin: '8px 0' }} />
 
               <Field label="CID (mock)">
                 <code
