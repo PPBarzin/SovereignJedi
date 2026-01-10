@@ -1,90 +1,154 @@
 # Sovereign Jedi — Monorepo (Episode I: The awakening)
 
-Ceci est le scaffold du monorepo pour le projet "Sovereign Jedi" (Episode I: The awakening — MVP).
-Je vais te donner un guide rapide pour démarrer, les conventions et les étapes CI / tests que j'ai mises en place.
+Ce dépôt contient le monorepo du projet “Sovereign Jedi — Episode I (MVP)”.  
+Objectif: livrer une expérience “data souveraine” côté utilisateur, avec une UI produit claire, et une architecture prête pour l’itération.
 
-Résumé
-- Monorepo géré avec `pnpm` (workspaces).
-- Node.js >= 18 recommandé.
-- Structure principale :
-  - `apps/web` — application frontend (Next.js skeleton).
-  - `packages/crypto` — bibliothèque `@sj/crypto` (dérivation de clé, encrypt/decrypt).
-  - `packages/storage` — bibliothèque `@sj/storage` (abstraction IndexedDB chiffrée, Dexie).
-  - `infra/ipfs` — config Docker Compose pour un nœud IPFS local.
-- Scripts importants disponibles depuis la racine via `pnpm`.
+---
 
-Prérequis
-- Node.js 18+ installé.
-- `pnpm` (version 8+) recommandé. Si tu n'as pas `pnpm`, installe-le globalement :
-  - `npm i -g pnpm`
-- Docker si tu veux lancer le nœud IPFS local (optionnel pour le scaffold, utile pour tests d'intégration).
+## Vision générale
 
-Installation (ordre recommandé)
-1. Récupère le repo sur ta machine.
-2. Depuis la racine du projet :
-   - `pnpm install`
-3. Lancer la suite de tests pour tout le workspace :
-   - `pnpm -r test`
-4. Builder tout le workspace :
-   - `pnpm -r build`
-5. Si tout est vert, tu peux lancer le dev server web (optionnel):
-   - `pnpm --filter web dev`
+- Données chiffrées côté client, souveraines et réutilisables.
+- UX “Drive-like” simple: déposer un fichier, le retrouver, afficher ses propriétés.
+- Progressive disclosure: pas d’infos techniques en vue principale; détails accessibles dans un panneau de propriétés.
+- Itérations successives (Episodes/Tasks) pilotées par une spec UI/URS et un Decision log (ProgDec).
 
-Remarque sur l'ordre : tu as demandé explicitement cet ordre. Le script racine `ci` lance `pnpm install && pnpm -r test && pnpm -r build`.
+---
 
-Arborescence (attendue)
-- `apps/web/` — frontend (squelette Next.js TypeScript).
-- `packages/crypto/` — `@sj/crypto` :
-  - API : dérivation de clé (wallet-derived), `encrypt`, `decrypt`, vérification d'intégrité.
-  - tests unitaires (roundtrip encrypt/decrypt).
-- `packages/storage/` — `@sj/storage` :
-  - wrapper IndexedDB (ex: Dexie) chiffré pour stocker manifest/envelopes.
-  - API simple pour `getManifest`, `putManifest`, `listEntries`.
-  - tests unitaires.
-- `infra/ipfs/docker-compose.yml` — compose file pour IPFS (Kubo / go-ipfs) exposé via HTTP API.
-- `package.json` racine — workspaces et scripts (scripts: `bootstrap`, `test`, `build`, `ci`, `dev:web`, ...).
-- `tsconfig.json` racine — config TypeScript partagée (references / composite si on évolue vers projet monorepo typé strict).
-- `.github/workflows/ci.yml` — pipeline CI minimal (install, lint, typecheck, test, build).
+## Architecture (monorepo)
 
-CI & Tests
-- Pipeline CI (ex : GitHub Actions) exécute :
-  1. `pnpm install`
-  2. `pnpm -r test`
-  3. `pnpm -r build`
-- Tests unitaires : `vitest` est utilisé pour les packages (configuration minimale incluse).
-- Lint & typecheck : prévoir `eslint` + `typescript` pour la vérification statique (scripts racine prêts à être exécutés).
+- apps/web — application Next.js (UI)
+- packages/crypto — `@sj/crypto` (helpers crypto)
+- packages/storage — `@sj/storage` (abstraction IndexedDB chiffrée)
+- infra/ipfs — docker-compose pour un nœud IPFS local (optionnel pour le mock)
+- docs/tasks — documentation par task (ex: task-02.md)
 
-Docker — IPFS local
-- Si tu veux démarrer un nœud IPFS local pour tests d'intégration :
-  - Ouvre `infra/ipfs/docker-compose.yml` et lance : `docker compose up -d`
-  - Le nœud IPFS exposera une API HTTP (URL exposée dans le compose).
-- Le frontend peut pointer vers `NEXT_PUBLIC_IPFS_API_URL` pour les tests locaux.
+Outils:
+- Node.js ≥ 18
+- pnpm 8.x (corepack possible)
+- Docker (optionnel) pour IPFS
 
-Développement local rapide
-- Après `pnpm install` et si les tests/build sont ok :
-  - Pour lancer uniquement le web dev server : `pnpm --filter web dev`
-- Pour exécuter les tests d'un package en particulier :
-  - `pnpm --filter @sj/crypto test` ou `pnpm --filter @sj/storage test`
+---
 
-Notes techniques importantes
-- Toute cryptographie persistante doit être traitée selon la spécification URS : clés dérivées côté client, pas de stockage de clés en clair, manifest chiffré, etc.
-- Le package `@sj/crypto` est implémenté avec les APIs WebCrypto (ou fallback Node crypto) pour garantir compatibilité navigateur / Node (tests).
-- `@sj/storage` utilise IndexedDB (Dexie) pour la persistance locale chiffrée (le contenu est chiffré avant d'être stocké).
+## One-command dev
 
-Prochaines étapes que je peux exécuter pour toi
-- Initialiser le scaffold complet (création des packages, fichiers de config, tests et CI). — (je peux déjà l'avoir fait si tu veux que j'éxecute les commandes d'installation et tests comme tu as demandé).
-- Lancer `pnpm install` puis `pnpm -r test` et `pnpm -r build`, et te rendre compte des éventuelles erreurs. (Tu as demandé d'exécuter ces étapes — dis-moi si je dois lancer ces commandes maintenant.)
+Deux modes via le script à la racine:
 
-Aide & communication
-- Si tu veux que j'exécute les commandes d'installation/tests/build maintenant, dis "lance l'installation et les tests" ; je lancerai `pnpm install`, `pnpm -r test`, `pnpm -r build` dans l'ordre et je te remonterai les sorties et diagnostics.
-- Si tu préfères que je crée d'abord une PR avec les fichiers scaffolding et tests, je peux préparer les commits et te montrer la diff avant d'appliquer.
+- Démarrage simple (UI seule):
+  - `./dev.sh`
+  - Health check automatique → affichera:
+    - ✅ Dev server is up and healthy at: http://localhost:1620
+    - ⚠️ IPFS unavailable — running in mock mode (si IPFS n’est pas up)
 
---- 
-Fichiers utiles à consulter / éditer
-- `package.json` (racine) — scripts et workspaces
-- `apps/web/` — frontend
-- `packages/crypto/` — code crypto + tests
-- `packages/storage/` — code storage + tests
-- `infra/ipfs/docker-compose.yml` — ipfs local
+- Démarrage avec IPFS (optionnel):
+  - `./dev.sh --with-ipfs`
+  - Lance `infra/ipfs/docker-compose.yml`, attend l’API IPFS, puis l’UI.
 
-Merci — dis-moi si je dois lancer l'installation/tests/build maintenant (je ferai les runs dans l'ordre tu as demandé).
+Ports:
+- UI (Next.js dev): 1620
+- IPFS HTTP API: 5001 (http://127.0.0.1:5001/api/v0)
+
+Prérequis (résumé):
+- Node 18+, pnpm 8.9.0, curl/wget, (Docker pour --with-ipfs)
+- Détails complémentaires dans ENVIRONMENT.md
+
+---
+
+## Setup “classique” (si vous n’utilisez pas dev.sh)
+
+1) Installer deps:
+- `pnpm install`
+
+2) Lancer dev web:
+- `pnpm --filter @sj/web dev` (port 1620 si configuré)
+
+3) Tests & build (si utiles au scope courant):
+- `pnpm -r test`
+- `pnpm -r build`
+
+---
+
+## UI — état actuel (Task 2 + 2.5 appliquées)
+
+- Header: statut wallet (mock) + toggle thème (☀️/🌙, persisté)
+- Left panel (filters): All files, Shared with me, Private, Project X, Invoices
+- Main panel:
+  - Drop zone dédiée bleutée (drag & drop + bouton Select Files)
+  - États visuels: drag-over / loading / success / error
+  - Liste de fichiers (mock): Name, Size, Status, Date, Actions
+  - Footer de liste “1–N of N”
+- Panneau Propriétés (overlay):
+  - Détails techniques visibles ici seulement (CID mock, “shared with”, permissions mock)
+  - Fermeture via clic extérieur / bouton / ESC
+- Hydratation Next.js stabilisée:
+  - Rendu UI post-mount + suppressHydrationWarning sur les dates
+
+Scope mock:
+- Pas d’IPFS/chiffrement/wallet réels (hors périmètre Task 2/2.5)
+
+---
+
+## Documentation
+
+Structure attendue:
+- README.md (ce document): vision générale, setup, architecture
+- docs/tasks/task-XX.md: documentation spécifique par task
+
+Chaque document de task doit contenir:
+- Objectif de la task
+- Ce qui a été implémenté
+- Comment tester
+- Limites / out of scope
+- Lien vers le ProgDec associé
+
+Existant:
+- docs/tasks/task-02.md — UI Skeleton (MVP)
+
+Le README général doit être mis à jour si une task impacte la compréhension globale du projet (ex: ports, run, scope UI).
+
+---
+
+## Decision log — ProgDec (obligatoire)
+
+- Un seul objet Anytype ProgDec par task
+- Créé au début de la task
+- Sert à tracer les décisions significatives
+
+On consigne une décision si elle:
+- touche à l’architecture
+- touche à la sécurité
+- impacte l’UX
+- introduit une dépendance
+- serait coûteuse à modifier plus tard
+
+Format d’une décision:
+- ID: TXX-D00N
+- Décision: (1 phrase)
+- Contexte: contrainte ou problème
+- Options considérées: A / B (bref)
+- Raison: pourquoi l’option retenue
+- Impact: conséquences (techniques / UX / sécurité)
+- Statut: Proposed / Accepted / Reverted
+
+Les IDs peuvent être référencées dans:
+- les commits Git
+- la doc de task
+
+---
+
+## CI & qualité (à étendre au besoin)
+
+- Tests unitaires (packages) via vitest
+- Lint & typecheck (eslint/typescript)
+- Pipeline: install → test → build
+
+---
+
+## Références rapides
+
+- ENVIRONMENT.md — versions/ports/prérequis
+- dev.sh — exécution en “one-command” (UI seule ou `--with-ipfs`)
+- apps/web — UI Next.js
+- packages/crypto — helpers crypto
+- packages/storage — abstraction IndexedDB chiffrée
+- infra/ipfs — docker-compose IPFS (optionnel)
+
