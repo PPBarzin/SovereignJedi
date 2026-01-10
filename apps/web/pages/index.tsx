@@ -533,26 +533,7 @@ export default function Home(): JSX.Element {
           <input ref={fileInputRef} type="file" onChange={onInputChange} style={{ display: 'none' }} />
 
           {/* File list (no CID here) */}
-          <div
-            onClick={openPicker}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? openPicker() : null)}
-            style={{
-              ...styles.dropEmpty,
-              border: `2px dashed ${t.border}`,
-              background: theme === 'light' ? '#fff' : '#0f172a',
-              color: t.subtext,
-              marginBottom: 12,
-              padding: 16,
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ fontSize: 14 }}>
-              <strong style={{ color: t.text }}>Drop a file</strong>{' '}
-              <span style={{ color: t.subtext }}>(or click to select)</span>
-            </div>
-          </div>
+
           <div
             style={{
               marginTop: 16,
