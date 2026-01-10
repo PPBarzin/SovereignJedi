@@ -228,8 +228,8 @@ export default IdentityStatus
 const container: React.CSSProperties = {
   padding: 10,
   borderRadius: 8,
-  border: '1px solid #e8e8e8',
-  background: '#fff',
+  border: '1px solid #cfe6f6',
+  background: '#f3fbff', // slightly bluish background for better contrast on dark pages
   fontSize: 13,
   maxWidth: 720,
 }
@@ -288,18 +288,19 @@ const smallBtn: React.CSSProperties = {
   padding: '4px 8px',
   fontSize: 12,
   borderRadius: 6,
-  border: '1px solid #ddd',
-  background: '#fff',
+  border: '1px solid #cfe8fb',
+  background: '#eaf8ff',
+  color: '#042135',
   cursor: 'pointer',
 }
 
 const meta: React.CSSProperties = {
   textAlign: 'right',
   minWidth: 260,
-  background: '#fafafa',
+  background: '#eef9ff', // soft bluish card background
   padding: 8,
   borderRadius: 8,
-  border: '1px solid #f0f0f0',
+  border: '1px solid #d7eefc',
 }
 
 const metaRow: React.CSSProperties = {
@@ -317,23 +318,23 @@ const metaLabel: React.CSSProperties = {
 const metaValue: React.CSSProperties = {
   fontFamily: 'monospace',
   fontSize: 12,
-  color: '#222',
+  color: '#07263a', // darker bluish text for better contrast on the light bluish background
 }
 
 const dangerBtn: React.CSSProperties = {
   padding: '8px 12px',
-  background: '#fff',
-  border: '1px solid #e0b4b4',
-  color: '#b00020',
+  background: '#fff5f5',
+  border: '1px solid #f1c7c7',
+  color: '#8b0000',
   borderRadius: 8,
   cursor: 'pointer',
 }
 
 const mutedBtn: React.CSSProperties = {
   padding: '8px 12px',
-  background: '#fff',
-  border: '1px solid #e6e6e6',
-  color: '#333',
+  background: '#f3fbff',
+  border: '1px solid #dfeefb',
+  color: '#052033',
   borderRadius: 8,
   cursor: 'pointer',
 }
@@ -344,6 +345,6 @@ const hint: React.CSSProperties = {
 
 const noIdentityBox: React.CSSProperties = {
   textAlign: 'right',
-  color: '#666',
+  color: '#9fbfd6',
   fontSize: 13,
 }
