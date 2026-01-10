@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FC } from 'react'
 
+import { getTokens } from './theme'
 import {
   Identity,
   IdentityState,
@@ -61,6 +62,9 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
       return null
     }
   }, [])
+
+  // Use theme tokens (dark by default here). In a follow-up we can wire this to a global theme switch.
+  const t = getTokens('dark')
 
   // Derive the high-level state
   const state = useMemo<IdentityState>(() => {
@@ -160,7 +164,7 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
   }, [state])
 
   return (
-    <div style={container}>
+    <div style={{ ...container, background: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.text }}>
       <div style={row}>
         <div style={left}>
           <div style={title}>Identity</div>
@@ -173,7 +177,7 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
           {identity && identity.publicKey ? (
             <div style={identityRow}>
               <span style={addr}>{truncateAddress(identity.publicKey)}</span>
-              <button onClick={copyAddress} style={smallBtn}>
+              <button onClick={copyAddress} style={{ ...smallBtn, border: t.btnMutedBorder, background: t.btnMutedBg, color: t.btnMutedText }}>
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
@@ -185,7 +189,7 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
         <div style={right}>
           {identity ? (
             <>
-              <div style={meta}>
+              <div style={{ ...meta, background: t.metaBg, border: `1px solid ${t.metaBorder}`, color: t.metaText }}>
                 <div style={metaRow}>
                   <div style={metaLabel}>Verified at</div>
                   <div style={metaValue}>{identity.verifiedAt ?? '—'}</div>
@@ -201,7 +205,7 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
               </div>
 
               <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                <button onClick={clear} style={dangerBtn}>
+                <button onClick={clear} style={{ ...dangerBtn, border: t.btnMutedBorder, background: t.btnMutedBg, color: t.danger }}>
                   Clear identity
                 </button>
               </div>
@@ -210,7 +214,7 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
             <div style={noIdentityBox}>
               <div style={{ marginBottom: 8 }}>No identity persisted.</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={clear} style={mutedBtn}>
+                <button onClick={clear} style={{ ...mutedBtn, border: t.btnMutedBorder, background: t.btnMutedBg, color: t.btnMutedText }}>
                   Ensure cleared
                 </button>
               </div>

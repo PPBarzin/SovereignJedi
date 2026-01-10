@@ -19,6 +19,7 @@ import {
   verifyMessageSignatureVerbose,
   messageToBytes,
 } from './utils'
+import { getTokens } from './theme'
 
 type Props = {
   /**
@@ -103,6 +104,8 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
       setLastIdentity(null)
     }
   }, [])
+
+  const tokens = getTokens('dark')
 
   const buildMessage = useCallback(
     (pubKey: string, nonce: string, issuedAtIso: string) => {
@@ -266,11 +269,11 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
   }, [lastIdentity])
 
   return (
-    <div style={containerStyle}>
+    <div style={{ ...containerStyle, background: tokens.cardBg, border: `1px solid ${tokens.cardBorder}`, color: tokens.text }}>
       <div style={rowStyle}>
         <div>
-          <div style={labelStyle}>Proof-of-control</div>
-          <div style={descStyle}>
+          <div style={{ ...labelStyle, color: tokens.text }}>Proof-of-control</div>
+          <div style={{ ...descStyle, color: tokens.subtext }}>
             Sign a free, non-transactional message to prove ownership of the connected wallet.
           </div>
           <div style={{ marginTop: 8 }}>
@@ -285,7 +288,9 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
             disabled={!effectivePublicKey || verifying}
             style={{
               ...buttonStyle,
-              background: effectivePublicKey ? '#0a8' : '#ddd',
+              background: effectivePublicKey ? tokens.btnPrimaryBg : tokens.btnMutedBg,
+              border: effectivePublicKey ? tokens.btnPrimaryBorder : tokens.btnMutedBorder,
+              color: effectivePublicKey ? tokens.btnPrimaryText : tokens.btnMutedText,
               cursor: !effectivePublicKey || verifying ? 'not-allowed' : 'pointer',
             }}
             aria-disabled={!effectivePublicKey || verifying}
@@ -297,10 +302,10 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
 
       <div style={{ marginTop: 12 }}>
         {lastIdentity ? (
-          <div style={identityBoxStyle}>
+          <div style={{ ...identityBoxStyle, background: tokens.metaBg, border: `1px solid ${tokens.metaBorder}`, color: tokens.metaText }}>
             <div>
               <strong>Status:</strong>{' '}
-              <span style={{ color: verified ? '#046' : '#b66' }}>
+              <span style={{ color: verified ? tokens.ok : tokens.warn }}>
                 {verified ? 'Verified' : 'Connected (not verified / expired)'}
               </span>
             </div>
@@ -315,11 +320,11 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
             </div>
           </div>
         ) : (
-          <div style={hintStyle}>No verification present. Click "Sign to Verify" after connecting your wallet.</div>
+          <div style={{ ...hintStyle, color: tokens.subtext }}>No verification present. Click "Sign to Verify" after connecting your wallet.</div>
         )}
       </div>
 
-      {error && <div style={errorStyle}>Error: {error}</div>}
+      {error && <div style={{ ...errorStyle, color: tokens.danger, background: 'rgba(255,40,40,0.06)' }}>Error: {error}</div>}
     </div>
   )
 }
@@ -348,12 +353,10 @@ const rowStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 700,
-  color: '#dff6ff',
 }
 
 const descStyle: React.CSSProperties = {
   fontSize: 13,
-  color: '#b9cfe0',
 }
 
 const controlsStyle: React.CSSProperties = {
@@ -368,7 +371,6 @@ const buttonStyle: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid rgba(255,255,255,0.06)',
   background: 'transparent',
-  color: '#dff6ff',
   fontWeight: 700,
 }
 
@@ -389,8 +391,6 @@ const hintStyle: React.CSSProperties = {
 
 const errorStyle: React.CSSProperties = {
   marginTop: 8,
-  color: '#ffb3b3',
-  background: 'rgba(255,40,40,0.06)',
   padding: '6px 8px',
   borderRadius: 6,
   fontSize: 13,

@@ -6,16 +6,19 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 
-// ProgDec moved to docs/progdec/T03-D001-wallet-ui.md — remove inline decision notes.
-// See docs/progdec/T03-D001-wallet-ui.md for rationale and traceability.
+ // ProgDec moved to docs/progdec/T03-D001-wallet-ui.md — remove inline decision notes.
+ // See docs/progdec/T03-D001-wallet-ui.md for rationale and traceability.
 
-import {
-  truncateAddress,
-  setLastWalletProvider,
-  clearLastWalletProvider,
-  clearIdentity,
-  getLastWalletProvider,
-} from './types'
+ import {
+   truncateAddress,
+   setLastWalletProvider,
+   clearLastWalletProvider,
+   clearIdentity,
+   getLastWalletProvider,
+ } from './types'
+
+ // Shared theme tokens for consistent dark/bluish UI across wallet components
+ import { getTokens } from './theme'
 
 type Props = {
   /**
@@ -266,23 +269,25 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
   }, [onRequestVerify])
 
   const lastProvider = getLastWalletProvider()
+  // Use shared tokens (dark theme) to keep card/button colors consistent across components
+  const tokens = getTokens('dark')
 
   return (
-    <div style={styles.container}>
+    <div style={{ ...styles.container, background: tokens.cardBg, border: `1px solid ${tokens.cardBorder}`, color: tokens.text }}>
       <div style={styles.row}>
-        <div style={styles.badge}>
+        <div style={{ ...styles.badge, background: tokens.cardBg, border: `1px solid ${tokens.cardBorder}`, color: tokens.text }}>
           Wallet:{' '}
           <span
             style={{
               ...styles.addr,
-              color: publicKeyStr ? '#0b8' : '#999',
+              color: publicKeyStr ? tokens.ok : tokens.subtext,
             }}
             title={publicKeyStr ?? 'Not connected'}
           >
             {publicKeyStr ? truncateAddress(publicKeyStr) : 'Not connected'}
           </span>
           {publicKeyStr && (
-            <button onClick={copyAddress} style={styles.copyBtn} aria-label="Copy address">
+            <button onClick={copyAddress} style={{ ...styles.copyBtn, border: tokens.btnMutedBorder, background: tokens.btnMutedBg, color: tokens.btnMutedText }} aria-label="Copy address">
               {copied ? 'Copied' : 'Copy'}
             </button>
           )}
@@ -305,13 +310,13 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
             </>
           ) : (
             <>
-              <button onClick={disconnect} style={styles.disconnectBtn}>
+              <button onClick={disconnect} style={{ ...styles.disconnectBtn, background: tokens.btnMutedBg, border: tokens.btnMutedBorder, color: tokens.btnMutedText }}>
                 Disconnect
               </button>
 
               {/* Verify button is shown only when not yet verified */}
               {!isVerified ? (
-                <button onClick={handleVerifyClick} style={styles.verifyBtn}>
+                <button onClick={handleVerifyClick} style={{ ...styles.verifyBtn, background: tokens.btnPrimaryBg, border: tokens.btnPrimaryBorder, color: tokens.btnPrimaryText }}>
                   Verify (Sign)
                 </button>
               ) : (
@@ -349,14 +354,14 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  // visual attributes (colors/backgrounds) are applied at render time using shared theme tokens
   badge: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     padding: '6px 10px',
     borderRadius: 8,
-    border: '1px solid #e0e0e0',
-    background: '#fff',
+    // border/background will be provided by theme merge at render
     fontSize: 14,
   },
   addr: {
@@ -370,6 +375,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     cursor: 'pointer',
     borderRadius: 6,
+    // visual styles applied inline with tokens
   },
   controls: {
     display: 'flex',
@@ -378,49 +384,39 @@ const styles: Record<string, React.CSSProperties> = {
   },
   connectBtn: {
     padding: '8px 12px',
-    background: '#06c',
-    color: '#fff',
-    border: 'none',
     borderRadius: 8,
     cursor: 'pointer',
+    // colors applied at usage site
   },
   disconnectBtn: {
     padding: '6px 10px',
-    background: '#fff',
-    color: '#333',
-    border: '1px solid #ddd',
     borderRadius: 8,
     cursor: 'pointer',
+    // colors applied at usage site
   },
   verifyBtn: {
     padding: '6px 10px',
-    background: '#0a8',
-    color: '#fff',
-    border: 'none',
     borderRadius: 8,
     cursor: 'pointer',
+    // colors applied at usage site
   },
   verifiedBadge: {
     padding: '6px 10px',
-    background: '#e6ffed',
-    color: '#046',
     borderRadius: 8,
-    border: '1px solid #cef3d7',
     fontSize: 13,
+    // visual appearance controlled by theme tokens at render
   },
   installLink: {
     marginLeft: 8,
-    color: '#06c',
     fontSize: 13,
     textDecoration: 'none',
   },
   note: {
-    color: '#666',
     fontSize: 12,
   },
   error: {
-    color: '#b00020',
     fontSize: 13,
+    // error colors applied inline using tokens when rendering
   },
 }
 
