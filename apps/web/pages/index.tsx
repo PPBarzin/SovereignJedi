@@ -119,6 +119,12 @@ export default function Home(): JSX.Element {
 
   const t = useMemo(() => (theme === 'light' ? lightTokens : darkTokens), [theme])
 
+  // Hydration guard (avoid server/client date mismatch)
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
+
   // Wallet mock
   const [walletConnected, setWalletConnected] = useState(false)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
@@ -620,7 +626,7 @@ export default function Home(): JSX.Element {
                     {f.status}
                   </span>
                 </div>
-                <div style={{ color: t.subtext }}>{new Date(f.dateISO).toLocaleString()}</div>
+                <div style={{ color: t.subtext }} suppressHydrationWarning>{hydrated ? new Date(f.dateISO).toLocaleString() : ''}</div>
               </button>
             ))}
 
@@ -690,7 +696,7 @@ export default function Home(): JSX.Element {
               </Field>
               <Field label="Size">{activeFile.sizeText}</Field>
               <Field label="Status">{activeFile.status}</Field>
-              <Field label="Date">{new Date(activeFile.dateISO).toLocaleString()}</Field>
+              <Field label="Date"><span suppressHydrationWarning>{hydrated ? new Date(activeFile.dateISO).toLocaleString() : ''}</span></Field>
 
               <div style={{ height: 1, background: t.border, margin: '8px 0' }} />
 
