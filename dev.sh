@@ -199,6 +199,17 @@ fi
 # Start server in background (increase Node memory to reduce OOM risk)
 # We set NODE_OPTIONS for the spawned Next dev process to raise the max old space size.
 # Start server in background (use configured Node memory to reduce OOM risk)
+# If the port 1620 is occupied, free it before starting the server.
+# Note: this uses sudo+lsof as requested. It is defensive: checks for lsof and sudo, and only kills if a PID is found.
+if command -v lsof >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+  set +e
+  PID_TO_KILL="$(sudo lsof -t -i :1620 2>/dev/null || true)"
+  if [ -n "${PID_TO_KILL}" ]; then
+    info "Port 1620 occupied. Killing process(es): ${PID_TO_KILL}"
+    sudo kill -9 ${PID_TO_KILL} >/dev/null 2>&1 || true
+  fi
+  set -e
+fi
 NODE_OPTIONS="--max-old-space-size=${WEB_NODE_MEM_MB}" pnpm -C "$WEB_DIR" dev > "$DEV_LOG" 2>&1 &
 WEB_PID=$!
 info "Web PID: ${WEB_PID}"
