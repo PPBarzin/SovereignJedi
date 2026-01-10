@@ -7,6 +7,7 @@ import { clusterApiUrl } from '@solana/web3.js'
 import ConnectWallet from '../src/components/wallet/ConnectWallet'
 import VerifyWallet from '../src/components/wallet/VerifyWallet'
 import IdentityStatus from '../src/components/wallet/IdentityStatus'
+import { loadIdentity, isVerified } from '../src/components/wallet/types'
 
 /**
  * Task 2.5 — UI Mock (Product-like)
@@ -227,11 +228,28 @@ export default function Home(): JSX.Element {
     e.stopPropagation()
     dragCounter.current = 0
     const f = e.dataTransfer?.files?.[0]
-    if (f) handleFile(f)
-    else setUiFlow('idle')
+    if (f) {
+      // Gate uploads: ensure the user has a verified identity
+      const identity = loadIdentity()
+      if (!isVerified(identity)) {
+        setUiFlow('idle')
+        window.alert('Signature required — please verify your wallet.')
+        return
+      }
+      handleFile(f)
+    } else setUiFlow('idle')
   }, [])
 
-  const openPicker = useCallback(() => fileInputRef.current?.click(), [])
+  const openPicker = useCallback(() => {
+    // Require a verified identity before allowing file selection (upload gating)
+    const identity = loadIdentity()
+    if (!isVerified(identity)) {
+      // Minimal UX feedback: block the picker and prompt the user to verify
+      window.alert('Signature required — please verify your wallet.')
+      return
+    }
+    fileInputRef.current?.click()
+  }, [])
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (f) handleFile(f)
@@ -240,6 +258,15 @@ export default function Home(): JSX.Element {
 
   // Simulate processing of a file drop / selection
   const handleFile = useCallback((file: File) => {
+    // Upload gating: require a verified identity before accepting files
+    const identity = loadIdentity()
+    if (!isVerified(identity)) {
+      setUiFlow('idle')
+      // Minimal UX: alert and block the action. Guides user to Verify flow.
+      window.alert('Signature required — please verify your wallet before uploading files.')
+      return
+    }
+
     // enter loading
     setUiFlow('loading')
     const id = `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`

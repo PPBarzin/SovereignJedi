@@ -52,6 +52,23 @@ type Props = {
  */
 export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride }) => {
   const wallet = useWallet()
+
+  // Effective public key resolution:
+  // - Prefer an explicit `publicKey` prop (base58 string).
+  // - Fallback to the connected wallet adapter's `wallet.publicKey.toBase58()` if available.
+  // - Results in `string | null` so the component can render a disabled state when absent.
+  const effectivePublicKey = useMemo(() => {
+    try {
+      if (publicKey) return publicKey
+      if (wallet && (wallet as any).publicKey && typeof (wallet as any).publicKey.toBase58 === 'function') {
+        return (wallet as any).publicKey.toBase58()
+      }
+    } catch {
+      // ignore and fallthrough to null
+    }
+    return null
+  }, [publicKey, wallet])
+
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastIdentity, setLastIdentity] = useState<Identity | null>(null)
@@ -103,7 +120,7 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
   const doVerify = useCallback(
     async (opts?: { forceNewNonce?: boolean }) => {
       setError(null)
-      if (!publicKey) {
+      if (!effectivePublicKey) {
         setError('No public key available. Connect a wallet first.')
         return
       }
@@ -112,7 +129,7 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
       try {
         const nonce = generateNonce(24)
         const issuedAt = new Date().toISOString()
-        const message = buildMessage(publicKey, nonce, issuedAt)
+        const message = buildMessage(effectivePublicKey as string, nonce, issuedAt)
 
         // message bytes for signing
         const messageBytes = messageToBytes(message)
@@ -186,7 +203,7 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
         const signatureBase58 = signatureToBase58(signatureBytes)
 
         // Verify locally
-        const verification = verifyMessageSignatureVerbose(message, signatureBytes, publicKey)
+        const verification = verifyMessageSignatureVerbose(message, signatureBytes, effectivePublicKey as string)
         if (!verification.ok) {
           setError(`Signature verification failed: ${verification.reason ?? 'unknown'}`)
           setVerifying(false)
@@ -199,7 +216,7 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
         const expiresAt = computeExpiresAt(verifiedAt, ttl)
 
         const identity: Identity = {
-          publicKey,
+          publicKey: effectivePublicKey as string,
           message,
           signature: signatureBase58,
           issuedAt,
@@ -258,20 +275,20 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
           </div>
           <div style={{ marginTop: 8 }}>
             <strong>Wallet:</strong>{' '}
-            <span style={{ fontFamily: 'monospace' }}>{publicKey ? truncateAddress(publicKey) : '—'}</span>
+            <span style={{ fontFamily: 'monospace' }}>{effectivePublicKey ? truncateAddress(effectivePublicKey) : '—'}</span>
           </div>
         </div>
 
         <div style={controlsStyle}>
           <button
             onClick={() => void doVerify()}
-            disabled={!publicKey || verifying}
+            disabled={!effectivePublicKey || verifying}
             style={{
               ...buttonStyle,
-              background: publicKey ? '#0a8' : '#ddd',
-              cursor: !publicKey || verifying ? 'not-allowed' : 'pointer',
+              background: effectivePublicKey ? '#0a8' : '#ddd',
+              cursor: !effectivePublicKey || verifying ? 'not-allowed' : 'pointer',
             }}
-            aria-disabled={!publicKey || verifying}
+            aria-disabled={!effectivePublicKey || verifying}
           >
             {verifying ? 'Verifying…' : 'Sign to Verify'}
           </button>
