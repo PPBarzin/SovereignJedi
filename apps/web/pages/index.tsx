@@ -352,7 +352,7 @@ export default function Home(): JSX.Element {
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
-          <ConnectionProvider endpoint={clusterApiUrl(process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? 'devnet')}>
+          <ConnectionProvider endpoint={clusterApiUrl((process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? 'devnet') as 'devnet' | 'mainnet-beta' | 'testnet')}>
             <WalletProvider wallets={[new PhantomWalletAdapter()]} autoConnect={false}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <ConnectWallet />

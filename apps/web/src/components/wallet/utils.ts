@@ -18,6 +18,32 @@ import nacl from 'tweetnacl';
 import { PublicKey } from '@solana/web3.js';
 
 /**
+ * Browser-friendly helpers to avoid using Node `Buffer` in the frontend bundle.
+ * - `base64ToBytes` uses `atob` when available (browser); falls back to Buffer if not.
+ * - `hexToBytes` converts a hex string to a Uint8Array.
+ */
+function base64ToBytes(b64: string): Uint8Array {
+  // browser: atob -> binary string -> bytes
+  if (typeof atob !== 'undefined') {
+    const binary = atob(b64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+  // fallback for non-browser environments that still run this util
+  return new Uint8Array(Buffer.from(b64, 'base64'));
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
+
+/**
  * Acceptable signature length for ed25519
  */
 const ED25519_SIG_LEN = 64;
@@ -54,18 +80,18 @@ export function decodeSignature(
     // ignore and try next
   }
 
-  // Try base64
+  // Try base64 (browser friendly)
   try {
-    const buf = Buffer.from(sig, 'base64');
-    if (buf.length === ED25519_SIG_LEN) return new Uint8Array(buf);
+    const arr = base64ToBytes(sig);
+    if (arr.length === ED25519_SIG_LEN) return arr;
   } catch {
     // ignore
   }
 
-  // Try hex
+  // Try hex (browser friendly)
   const hexRegex = /^[0-9a-fA-F]+$/;
   if (hexRegex.test(sig) && sig.length === ED25519_SIG_LEN * 2) {
-    return new Uint8Array(Buffer.from(sig, 'hex'));
+    return hexToBytes(sig);
   }
 
   throw new Error('Unable to decode signature: unsupported format or invalid length');
@@ -79,7 +105,8 @@ export function decodeSignature(
  */
 export function signatureToBase58(sig: string | Uint8Array): string {
   const bytes = decodeSignature(sig);
-  return bs58.encode(Buffer.from(bytes));
+  // bs58.encode accepts Uint8Array; ensure we pass a Uint8Array
+  return bs58.encode(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
 }
 
 /**

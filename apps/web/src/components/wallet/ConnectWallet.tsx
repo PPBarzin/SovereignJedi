@@ -112,10 +112,9 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
       }
       try {
         const pk = new PublicKey(newPubKey).toBase58()
-        // If the account changed and we had a different one, clear identity (force reconnect/verify)
-        const prev = getLastWalletProvider() ? prev : null
         // Always clear identity on account change to comply with Task 3 no hot-switch
         clearIdentity()
+        // Persist last provider remains unchanged here; UI will prompt reconnect/verify.
         setPublicKeyStr(pk)
       } catch {
         // ignore
