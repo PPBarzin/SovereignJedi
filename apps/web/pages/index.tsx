@@ -339,7 +339,7 @@ export default function Home(): JSX.Element {
               color: t.text,
             }}
           >
-            {theme === 'light' ? 'Dark mode' : 'Light mode'}
+            {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
           <span
@@ -422,8 +422,13 @@ export default function Home(): JSX.Element {
               onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? openPicker() : null)}
               style={{
                 ...styles.dropEmpty,
-                border: `2px dashed ${t.border}`,
-                background: theme === 'light' ? '#fff' : t.panelBg,
+                border: `2px dashed ${t.accent}`,
+                background: theme === 'light'
+                  ? '#eef6ff'
+                  : 'linear-gradient(180deg, rgba(14,165,233,0.08), rgba(2,132,199,0.06))',
+                boxShadow: theme === 'light'
+                  ? 'inset 0 0 0 1px rgba(30,64,175,0.08)'
+                  : 'inset 0 0 0 1px rgba(14,165,233,0.06)',
                 color: t.subtext,
               }}
             >
@@ -745,6 +750,19 @@ const styles: Record<string, React.CSSProperties> = {
     borderStyle: 'solid',
     fontSize: 13,
     fontWeight: 600,
+    cursor: 'pointer',
+  },
+  iconBtn: {
+    appearance: 'none',
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    display: 'grid',
+    placeItems: 'center',
+    fontSize: 16,
+    lineHeight: 1,
     cursor: 'pointer',
   },
   badge: {
