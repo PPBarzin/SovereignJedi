@@ -303,6 +303,10 @@ export default function Home(): JSX.Element {
   /* Render                                                                  */
   /* ---------------------------------- */
 
+  if (!hydrated) {
+    return <div suppressHydrationWarning />
+  }
+
   return (
     <div style={{ ...styles.page, background: t.pageBg, color: t.text }}>
       {/* Header */}
