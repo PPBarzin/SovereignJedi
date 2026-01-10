@@ -4,6 +4,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FC } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
+
+/**
+ * ProgDec note (T03-D00N):
+ * Decision: use standard `@solana/wallet-adapter-react-ui` modal + `WalletMultiButton`
+ * and provide ConnectionProvider/WalletProvider app-wide (see pages/_app.tsx).
+ * Rationale: prevents WalletNotSelectedError by letting the adapter handle wallet
+ * selection / modal; MVP supports Phantom-only (PhantomWalletAdapter).
+ */
 
 import {
   truncateAddress,
@@ -287,14 +296,7 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
         <div style={styles.controls}>
           {!publicKeyStr ? (
             <>
-              <button
-                onClick={connect}
-                style={styles.connectBtn}
-                disabled={connecting}
-                aria-disabled={connecting}
-              >
-                {connecting ? 'Connecting…' : 'Connect Wallet'}
-              </button>
+              <WalletMultiButton />
               {!hasPhantom && (
                 <a
                   href="https://phantom.app/download"
