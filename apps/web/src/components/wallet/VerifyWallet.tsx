@@ -326,12 +326,17 @@ export const VerifyWallet: FC<Props> = ({ publicKey, onVerified, clusterOverride
 
 export default VerifyWallet
 
-/* Styles */
+/* Styles - unified dark/bluish card style to match IdentityStatus and overall dark theme */
 const containerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
-  padding: 8,
+  padding: 12,
+  borderRadius: 8,
+  border: '1px solid rgba(255,255,255,0.04)',
+  background: '#07182b', // slightly lighter than page background for contrast
+  color: '#e6f6ff',
+  fontSize: 13,
 }
 
 const rowStyle: React.CSSProperties = {
@@ -342,12 +347,13 @@ const rowStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   fontSize: 14,
-  fontWeight: 600,
+  fontWeight: 700,
+  color: '#dff6ff',
 }
 
 const descStyle: React.CSSProperties = {
   fontSize: 13,
-  color: '#555',
+  color: '#b9cfe0',
 }
 
 const controlsStyle: React.CSSProperties = {
@@ -356,29 +362,36 @@ const controlsStyle: React.CSSProperties = {
   alignItems: 'center',
 }
 
+/* Button base: neutral dark-themed button; primary action styles are applied inline where needed */
 const buttonStyle: React.CSSProperties = {
   padding: '8px 12px',
   borderRadius: 8,
-  border: 'none',
-  color: '#fff',
-  fontWeight: 600,
+  border: '1px solid rgba(255,255,255,0.06)',
+  background: 'transparent',
+  color: '#dff6ff',
+  fontWeight: 700,
 }
 
+/* Identity panel inside the card - slightly lighter bluish panel */
 const identityBoxStyle: React.CSSProperties = {
-  border: '1px solid #e6e6e6',
-  padding: 8,
+  border: '1px solid rgba(255,255,255,0.03)',
+  padding: 10,
   borderRadius: 8,
-  background: '#fafafa',
+  background: '#0b2a42', // soft bluish card for inner meta area
   fontSize: 13,
+  color: '#e6f6ff',
 }
 
 const hintStyle: React.CSSProperties = {
-  color: '#666',
+  color: '#9fbfd6',
   fontSize: 13,
 }
 
 const errorStyle: React.CSSProperties = {
   marginTop: 8,
-  color: '#b00020',
+  color: '#ffb3b3',
+  background: 'rgba(255,40,40,0.06)',
+  padding: '6px 8px',
+  borderRadius: 6,
   fontSize: 13,
 }
