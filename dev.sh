@@ -34,6 +34,8 @@ WEB_WAIT_SECONDS=60
 HEALTH_INTERVAL=2
 REQUIRED_NODE_MAJOR=18
 RECOMMENDED_PNPM_VERSION="8.9.0"
+# Node memory (MB) for the web dev server. Increase if Next build is killed due to memory.
+WEB_NODE_MEM_MB=8192
 
 # simple output helpers
 info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
@@ -194,8 +196,10 @@ if [ -f "$DEV_LOG" ]; then
   rm -f "$DEV_LOG" || true
 fi
 
-# Start server in background
-pnpm -C "$WEB_DIR" dev > "$DEV_LOG" 2>&1 &
+# Start server in background (increase Node memory to reduce OOM risk)
+# We set NODE_OPTIONS for the spawned Next dev process to raise the max old space size.
+# Start server in background (use configured Node memory to reduce OOM risk)
+NODE_OPTIONS="--max-old-space-size=${WEB_NODE_MEM_MB}" pnpm -C "$WEB_DIR" dev > "$DEV_LOG" 2>&1 &
 WEB_PID=$!
 info "Web PID: ${WEB_PID}"
 
