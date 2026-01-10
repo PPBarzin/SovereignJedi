@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 import type { AppProps } from 'next/app'
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets'
+import { getPhantomWallet } from '@solana/wallet-adapter-wallets'
 import { clusterApiUrl } from '@solana/web3.js'
 
 // Wallet adapter UI styles (minimal). This package exports a small CSS file
@@ -25,8 +25,10 @@ import '@solana/wallet-adapter-react-ui/styles.css'
  *   no wallet has been selected by the user.
  *
  * Notes:
- * - The MVP supports Phantom only (PhantomWalletAdapter). Additional adapters
- *   can be appended to the `wallets` array when expanding support.
+ * - The MVP registers Phantom as a Standard Wallet via `getPhantomWallet()` to
+ *   avoid duplicate registrations (do not instantiate both PhantomWalletAdapter
+ *   and the Standard Wallet for Phantom). This keeps the modal free of duplicate
+ *   entries and silences the console warning about duplicate registration.
  * - The RPC endpoint is derived from `NEXT_PUBLIC_SOLANA_CLUSTER` with a
  *   `devnet` fallback.
  */
@@ -39,7 +41,10 @@ export default function App({ Component, pageProps }: AppProps) {
   const endpoint = useMemo(() => clusterApiUrl(cluster as 'devnet' | 'mainnet-beta' | 'testnet'), [cluster])
 
   // Wallets list (Phantom-only in MVP)
-  const wallets = useMemo(() => [new PhantomWalletAdapter()], [])
+  // Use getPhantomWallet() to register Phantom as a Standard Wallet and avoid
+  // duplicate registration warnings when the extension exposes both window.solana
+  // and a standard wallet entry.
+  const wallets = useMemo(() => [getPhantomWallet()], [])
 
   return (
     <ConnectionProvider endpoint={endpoint}>

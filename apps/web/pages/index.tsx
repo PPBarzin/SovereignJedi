@@ -1,9 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react'
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets'
-import { clusterApiUrl } from '@solana/web3.js'
+// Wallet providers are configured globally in `pages/_app.tsx` (ConnectionProvider + WalletProvider + WalletModalProvider)
 import ConnectWallet from '../src/components/wallet/ConnectWallet'
 import VerifyWallet from '../src/components/wallet/VerifyWallet'
 import IdentityStatus from '../src/components/wallet/IdentityStatus'
@@ -379,15 +377,11 @@ export default function Home(): JSX.Element {
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
-          <ConnectionProvider endpoint={clusterApiUrl((process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? 'devnet') as 'devnet' | 'mainnet-beta' | 'testnet')}>
-            <WalletProvider wallets={[new PhantomWalletAdapter()]} autoConnect={false}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <ConnectWallet />
                 <VerifyWallet />
                 <IdentityStatus />
               </div>
-            </WalletProvider>
-          </ConnectionProvider>
         </div>
       </header>
 
@@ -518,9 +512,12 @@ export default function Home(): JSX.Element {
             </div>
 
             {filtered.map((f) => (
-              <button
+              <div
+                role="button"
                 key={f.id}
                 onClick={() => setActiveFile(f)}
+                tabIndex={0}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? setActiveFile(f) : null)}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 120px 140px 160px 100px',
@@ -566,11 +563,18 @@ export default function Home(): JSX.Element {
                 </div>
                 <div style={{ color: t.subtext }} suppressHydrationWarning>{hydrated ? new Date(f.dateISO).toLocaleString() : ''}</div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button aria-label="More actions" onClick={(e)=>{e.stopPropagation();}} style={{ background: 'transparent', border: '1px solid ' + t.border, borderRadius: 8, padding: '4px 8px', color: t.subtext }}>
+                  <div
+                    role="button"
+                    aria-label="More actions"
+                    tabIndex={0}
+                    onClick={(e)=>{e.stopPropagation();}}
+                    onKeyDown={(e)=>{ if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
+                    style={{ background: 'transparent', border: '1px solid ' + t.border, borderRadius: 8, padding: '4px 8px', color: t.subtext, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  >
                     ⋯
-                  </button>
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
 
             {filtered.length === 0 && (

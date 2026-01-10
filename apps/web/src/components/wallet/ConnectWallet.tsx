@@ -6,13 +6,8 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 
-/**
- * ProgDec note (T03-D00N):
- * Decision: use standard `@solana/wallet-adapter-react-ui` modal + `WalletMultiButton`
- * and provide ConnectionProvider/WalletProvider app-wide (see pages/_app.tsx).
- * Rationale: prevents WalletNotSelectedError by letting the adapter handle wallet
- * selection / modal; MVP supports Phantom-only (PhantomWalletAdapter).
- */
+// ProgDec moved to docs/progdec/T03-D001-wallet-ui.md — remove inline decision notes.
+// See docs/progdec/T03-D001-wallet-ui.md for rationale and traceability.
 
 import {
   truncateAddress,
