@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 import type { AppProps } from 'next/app'
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
-import { getPhantomWallet } from '@solana/wallet-adapter-wallets'
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets'
 import { clusterApiUrl } from '@solana/web3.js'
 
 // Wallet adapter UI styles (minimal). This package exports a small CSS file
@@ -41,10 +41,19 @@ export default function App({ Component, pageProps }: AppProps) {
   const endpoint = useMemo(() => clusterApiUrl(cluster as 'devnet' | 'mainnet-beta' | 'testnet'), [cluster])
 
   // Wallets list (Phantom-only in MVP)
-  // Use getPhantomWallet() to register Phantom as a Standard Wallet and avoid
-  // duplicate registration warnings when the extension exposes both window.solana
-  // and a standard wallet entry.
-  const wallets = useMemo(() => [getPhantomWallet()], [])
+  // Strategy:
+  // - If a Phantom extension is present (window.solana?.isPhantom) the extension
+  //   already exposes Phantom as a standard wallet entry; to avoid duplicate
+  //   registrations and console warnings we skip registering the adapter.
+  // - Otherwise, register the Phantom adapter so users without the extension can
+  //   still be offered Phantom through adapter flows.
+  const wallets = useMemo(() => {
+    if (typeof window !== 'undefined' && (window as any).solana && (window as any).solana.isPhantom) {
+      // Extension will appear in the modal as a standard wallet; do not register adapter
+      return []
+    }
+    return [new PhantomWalletAdapter()]
+  }, [])
 
   return (
     <ConnectionProvider endpoint={endpoint}>
