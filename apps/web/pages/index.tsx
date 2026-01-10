@@ -1,6 +1,12 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react'
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets'
+import { clusterApiUrl } from '@solana/web3.js'
+import ConnectWallet from '../src/components/wallet/ConnectWallet'
+import VerifyWallet from '../src/components/wallet/VerifyWallet'
+import IdentityStatus from '../src/components/wallet/IdentityStatus'
 
 /**
  * Task 2.5 — UI Mock (Product-like)
@@ -346,27 +352,15 @@ export default function Home(): JSX.Element {
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
-          <span
-            style={{
-              ...styles.badge,
-              color: walletConnected ? t.ok : t.subtext,
-              borderColor: walletConnected ? t.ok : t.border,
-              background: theme === 'light' ? '#fff' : t.mutedBg,
-            }}
-          >
-            Wallet: {walletConnected ? `Connected (${walletAddress})` : 'Not connected'}
-          </span>
-          <button
-            onClick={toggleWallet}
-            style={{
-              ...styles.btn,
-              borderColor: t.border,
-              background: t.mutedBg,
-              color: t.text,
-            }}
-          >
-            {walletConnected ? 'Disconnect (mock)' : 'Connect Wallet (mock)'}
-          </button>
+          <ConnectionProvider endpoint={clusterApiUrl(process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? 'devnet')}>
+            <WalletProvider wallets={[new PhantomWalletAdapter()]} autoConnect={false}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <ConnectWallet />
+                <VerifyWallet />
+                <IdentityStatus />
+              </div>
+            </WalletProvider>
+          </ConnectionProvider>
         </div>
       </header>
 
