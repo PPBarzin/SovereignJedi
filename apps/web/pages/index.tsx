@@ -376,7 +376,7 @@ export default function Home(): JSX.Element {
             borderRight: `1px solid ${t.border}`,
           }}
         >
-          <div style={{ ...styles.leftHeader, color: t.subtext }}>Filters</div>
+          <div style={{ ...styles.leftHeader, color: t.subtext }}>My Files</div>
           <nav style={styles.leftNav}>
             {[
               { key: 'all', label: 'All files' },
@@ -407,126 +407,52 @@ export default function Home(): JSX.Element {
 
         {/* Main panel — DnD + File list */}
         <main style={{ ...styles.main }}>
-          {/* DnD surface */}
+          {/* Drop zone card (centered) */}
           <div
             onDragEnter={onDragEnter}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
-            style={{ position: 'relative', minHeight: 120 }}
+            style={{ position: 'relative' }}
           >
-            {/* Empty/explicit DnD area if no files in current filter */}
-            {filtered.length === 0 && (
-              <div
-                onClick={openPicker}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? openPicker() : null)}
-                style={{
-                  ...styles.dropEmpty,
-                  border: `2px dashed ${t.border}`,
-                  background: theme === 'light' ? '#fff' : t.panelBg,
-                  color: t.subtext,
-                }}
-              >
-                <div style={{ fontSize: 28, marginBottom: 6 }}>⬇️</div>
-                <div style={{ fontWeight: 700, color: t.text }}>Drop a file to add it</div>
-                <div>[ or click to select ]</div>
+            <div
+              onClick={openPicker}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? openPicker() : null)}
+              style={{
+                ...styles.dropEmpty,
+                border: `2px dashed ${t.border}`,
+                background: theme === 'light' ? '#fff' : t.panelBg,
+                color: t.subtext,
+              }}
+            >
+              <div aria-hidden style={{ width: 44, height: 44, borderRadius: 10, border: `1px solid ${t.border}`, display: 'grid', placeItems: 'center', background: theme === 'light' ? '#f8fafc' : '#0b1220', marginBottom: 8 }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke={t.subtext} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M20 21H4" stroke={t.subtext} strokeWidth="2" strokeLinecap="round"/>
+                </svg>
               </div>
-            )}
-
-            {/* Global DnD overlay on drag-over */}
-            {(uiFlow === 'drag-over' || uiFlow === 'loading' || uiFlow === 'success' || uiFlow === 'error') && (
-              <div
-                onClick={uiFlow === 'drag-over' ? openPicker : undefined}
-                role="button"
-                style={{
-                  ...styles.dropOverlay,
-                  border: `2px dashed ${uiFlow === 'drag-over' ? t.accent : t.border}`,
-                  background:
-                    uiFlow === 'drag-over'
-                      ? theme === 'light'
-                        ? 'rgba(14,165,233,0.06)'
-                        : 'rgba(34,211,238,0.06)'
-                      : 'transparent',
-                }}
-              >
-                {uiFlow === 'drag-over' && (
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>⬇️</div>
-                    <div style={{ fontWeight: 700, color: t.text }}>Drop to add</div>
-                  </div>
-                )}
-
-                {uiFlow === 'loading' && (
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ marginBottom: 10, color: t.subtext }}>Processing…</div>
-                    <div
-                      style={{
-                        height: 8,
-                        width: 300,
-                        maxWidth: '80%',
-                        margin: '0 auto',
-                        borderRadius: 8,
-                        border: `1px solid ${t.border}`,
-                        background: theme === 'light' ? lightTokens.mutedBg : darkTokens.mutedBg,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '65%',
-                          height: '100%',
-                          background: `linear-gradient(90deg, ${t.accent}, ${t.accent2})`,
-                          animation: 'progressPulse 1.2s ease-in-out infinite',
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {uiFlow === 'success' && (
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      border: `1px solid ${theme === 'light' ? '#a7f3d0' : '#134e4a'}`,
-                      background: theme === 'light' ? '#ecfdf5' : '#052e2b',
-                      color: t.ok,
-                      fontWeight: 700,
-                      fontSize: 12,
-                    }}
-                  >
-                    <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: t.ok, display: 'inline-block' }} />
-                    File added
-                  </div>
-                )}
-
-                {uiFlow === 'error' && (
-                  <div
-                    role="alert"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      border: `1px solid ${theme === 'light' ? '#fecaca' : '#7f1d1d'}`,
-                      background: theme === 'light' ? '#fef2f2' : '#2b0b0b',
-                      color: t.danger,
-                      fontWeight: 700,
-                      fontSize: 12,
-                    }}
-                  >
-                    <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: t.danger, display: 'inline-block' }} />
-                    Something went wrong
-                  </div>
-                )}
-              </div>
-            )}
+              <div style={{ fontWeight: 800, color: t.text, marginBottom: 6 }}>Drop files here to upload</div>
+              <button onClick={(e)=>{e.stopPropagation(); openPicker();}} style={{ ...styles.btn, borderColor: t.border, background: theme === 'light' ? '#e2e8f0' : t.mutedBg, color: t.text }}>Select Files</button>
+              {uiFlow === 'loading' && (
+                <div style={{ width: 320, maxWidth: '90%', height: 8, background: theme === 'light' ? lightTokens.mutedBg : darkTokens.mutedBg, borderRadius: 8, border: `1px solid ${t.border}`, overflow: 'hidden', marginTop: 12 }}>
+                  <div style={{ width: '65%', height: '100%', background: `linear-gradient(90deg, ${t.accent}, ${t.accent2})`, animation: 'progressPulse 1.2s ease-in-out infinite' }} />
+                </div>
+              )}
+              {uiFlow === 'success' && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, border: `1px solid ${theme === 'light' ? '#a7f3d0' : '#134e4a'}`, background: theme === 'light' ? '#ecfdf5' : '#052e2b', color: t.ok, fontWeight: 700, fontSize: 12, marginTop: 8 }}>
+                  <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: t.ok, display: 'inline-block' }} />
+                  File added
+                </div>
+              )}
+              {uiFlow === 'error' && (
+                <div role="alert" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, border: `1px solid ${theme === 'light' ? '#fecaca' : '#7f1d1d'}`, background: theme === 'light' ? '#fef2f2' : '#2b0b0b', color: t.danger, fontWeight: 700, fontSize: 12, marginTop: 8 }}>
+                  <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: t.danger, display: 'inline-block' }} />
+                  Something went wrong
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Hidden input */}
@@ -546,7 +472,7 @@ export default function Home(): JSX.Element {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 120px 140px 160px',
+                gridTemplateColumns: '1fr 120px 140px 160px 100px',
                 gap: 0,
                 borderBottom: `1px solid ${t.border}`,
                 color: t.subtext,
@@ -554,10 +480,11 @@ export default function Home(): JSX.Element {
                 padding: '10px 12px',
               }}
             >
-              <div>File name</div>
+              <div>Name</div>
               <div>Size</div>
               <div>Status</div>
               <div>Date</div>
+              <div style={{ textAlign: 'right' }}>Actions</div>
             </div>
 
             {filtered.map((f) => (
@@ -566,7 +493,7 @@ export default function Home(): JSX.Element {
                 onClick={() => setActiveFile(f)}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 120px 140px 160px',
+                  gridTemplateColumns: '1fr 120px 140px 160px 100px',
                   gap: 0,
                   width: '100%',
                   textAlign: 'left',
@@ -608,12 +535,20 @@ export default function Home(): JSX.Element {
                   </span>
                 </div>
                 <div style={{ color: t.subtext }} suppressHydrationWarning>{hydrated ? new Date(f.dateISO).toLocaleString() : ''}</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button aria-label="More actions" onClick={(e)=>{e.stopPropagation();}} style={{ background: 'transparent', border: '1px solid ' + t.border, borderRadius: 8, padding: '4px 8px', color: t.subtext }}>
+                    ⋯
+                  </button>
+                </div>
               </button>
             ))}
 
             {filtered.length === 0 && (
               <div style={{ padding: 16, color: t.subtext }}>No files in this view yet — drop a file above.</div>
             )}
+            <div style={{ padding: '10px 12px', color: t.subtext, fontSize: 12 }}>
+              1–{filtered.length} of {filtered.length}
+            </div>
           </div>
         </main>
       </div>
