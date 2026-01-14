@@ -177,8 +177,18 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
           {identity && identity.publicKey ? (
             <div style={identityRow}>
               <span style={addr}>{truncateAddress(identity.publicKey)}</span>
-              <button onClick={copyAddress} style={{ ...smallBtn, border: t.btnMutedBorder, background: t.btnMutedBg, color: t.btnMutedText }}>
-                {copied ? 'Copied' : 'Copy'}
+              <button
+                onClick={copyAddress}
+                title={identity.publicKey}
+                aria-label={`Copy address ${identity.publicKey}`}
+                style={{
+                  ...smallBtn,
+                  border: t.btnPrimaryBorder,
+                  background: t.btnPrimaryBg,
+                  color: t.btnPrimaryText,
+                }}
+              >
+                {copied ? 'Copied' : 'Copy address'}
               </button>
             </div>
           ) : (
@@ -192,15 +202,15 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
               <div style={{ ...meta, background: t.metaBg, border: `1px solid ${t.metaBorder}`, color: t.metaText }}>
                 <div style={metaRow}>
                   <div style={metaLabel}>Verified at</div>
-                  <div style={metaValue}>{identity.verifiedAt ?? '—'}</div>
+                  <div style={{ ...metaValue, color: t.metaText }}>{identity.verifiedAt ?? '—'}</div>
                 </div>
                 <div style={metaRow}>
                   <div style={metaLabel}>Expires at</div>
-                  <div style={metaValue}>{identity.expiresAt ?? '—'}</div>
+                  <div style={{ ...metaValue, color: t.metaText }}>{identity.expiresAt ?? '—'}</div>
                 </div>
                 <div style={metaRow}>
                   <div style={metaLabel}>Nonce</div>
-                  <div style={metaValue}>{identity.nonce ? identity.nonce.slice(0, 12) + '…' : '—'}</div>
+                  <div style={{ ...metaValue, color: t.metaText }}>{identity.nonce ? identity.nonce.slice(0, 12) + '…' : '—'}</div>
                 </div>
               </div>
 
@@ -289,13 +299,16 @@ const addr: React.CSSProperties = {
 }
 
 const smallBtn: React.CSSProperties = {
-  padding: '4px 8px',
+  padding: '6px 10px',
   fontSize: 12,
-  borderRadius: 6,
-  border: '1px solid #cfe8fb',
-  background: '#eaf8ff',
-  color: '#042135',
+  fontWeight: 700,
+  borderRadius: 8,
+  border: '1px solid rgba(0,0,0,0.08)',
+  background: 'transparent',
+  color: 'inherit',
   cursor: 'pointer',
+  outline: 'none',
+  boxShadow: '0 1px 0 rgba(0,0,0,0.12)',
 }
 
 const meta: React.CSSProperties = {
@@ -322,7 +335,7 @@ const metaLabel: React.CSSProperties = {
 const metaValue: React.CSSProperties = {
   fontFamily: 'monospace',
   fontSize: 12,
-  color: '#07263a', // darker bluish text for better contrast on the light bluish background
+  // color intentionally omitted so callers can inherit/override via tokens (e.g. `t.metaText`)
 }
 
 const dangerBtn: React.CSSProperties = {
