@@ -48,7 +48,9 @@ ppbarzin@Innov8Lab:~/Documents/Programmation/tools/SovereignJedi$ pnpm -C apps/w
   
   Fail typique : modal ne s’ouvre pas / bouton inactif → problème provider _app.tsx ou CSS import.
   
-  OQ-03 Disconnect (30 sec)
+  PASS
+  
+  # OQ-03 Disconnect (30 sec)
   
   Disconnect via WalletMultiButton
   
@@ -60,7 +62,9 @@ ppbarzin@Innov8Lab:~/Documents/Programmation/tools/SovereignJedi$ pnpm -C apps/w
   
   Point de contrôle important : refresh la page après disconnect → tu ne dois pas être “verified” par magie.
   
-  OQ-04 Verify (1 min)
+  PASS
+  
+  # OQ-04 Verify (1 min)
   
   Connect
   
@@ -74,13 +78,13 @@ ppbarzin@Innov8Lab:~/Documents/Programmation/tools/SovereignJedi$ pnpm -C apps/w
   
   IdentityStatus => Verified
   
-  OQ-07 / OQ-08 Upload gating (1 min)
+  # OQ-07 / OQ-08 Upload gating (1 min)
   
   Sans verify : upload picker + drag/drop → bloqué
   
   Après verify : upload → OK
   
-  OQ-10 (très important) Changement de wallet / account (1 min)
+  # OQ-10 (très important) Changement de wallet / account (1 min)
   
   Tu verifies
   
