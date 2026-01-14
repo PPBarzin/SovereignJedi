@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ConnectWallet from '../src/components/wallet/ConnectWallet'
 import VerifyWallet from '../src/components/wallet/VerifyWallet'
 import IdentityStatus from '../src/components/wallet/IdentityStatus'
+import UnlockVaultButton from '../src/components/wallet/ui/UnlockVaultButton'
+import ProtectedAction from '../src/components/wallet/ui/ProtectedAction'
 import { loadIdentity, isVerified } from '../src/components/wallet/types'
 
 /**
@@ -380,6 +382,8 @@ export default function Home(): JSX.Element {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <ConnectWallet />
                 <VerifyWallet />
+                <UnlockVaultButton />
+                <ProtectedAction />
                 <IdentityStatus />
               </div>
         </div>

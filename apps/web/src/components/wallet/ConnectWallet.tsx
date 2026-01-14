@@ -5,6 +5,7 @@ import type { FC } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
+import useSession from '../../lib/session/useSession'
 
  // ProgDec moved to docs/progdec/T03-D001-wallet-ui.md — remove inline decision notes.
  // See docs/progdec/T03-D001-wallet-ui.md for rationale and traceability.
@@ -54,6 +55,7 @@ type Props = {
  */
 export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
   const wallet = useWallet() // may be a noop if not under WalletProvider
+  const { connectWallet, disconnectWallet } = useSession()
   const [hasPhantom, setHasPhantom] = useState<boolean>(false)
   const [publicKeyStr, setPublicKeyStr] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
@@ -109,23 +111,18 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
     if (!sol || !sol.isPhantom) return
 
     const handleAccountChanged = (newPubKey: any) => {
-      // if null => disconnected
-      if (!newPubKey) {
-        // clear persisted identity and last provider
-        clearIdentity()
-        clearLastWalletProvider()
-        setPublicKeyStr(null)
-        return
-      }
+      // NO HOT-SWITCH: treat any account change as a session disconnect.
+      // Clear persisted identity and last provider, disconnect the SessionManager,
+      // and force the UI into disconnected state so user must reconnect explicitly.
+      clearIdentity()
+      clearLastWalletProvider()
       try {
-        const pk = new PublicKey(newPubKey).toBase58()
-        // Always clear identity on account change to comply with Task 3 no hot-switch
-        clearIdentity()
-        // Persist last provider remains unchanged here; UI will prompt reconnect/verify.
-        setPublicKeyStr(pk)
+        // disconnectWallet comes from useSession() hook above
+        disconnectWallet()
       } catch {
         // ignore
       }
+      setPublicKeyStr(null)
     }
 
     const handleConnect = (info: any) => {
@@ -135,6 +132,13 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
           const pk = new PublicKey(info.publicKey).toBase58()
           setPublicKeyStr(pk)
           setLastProviderIfPhantom()
+          // Register the connected pubkey with SessionManager (do NOT unlock)
+          try {
+            // connectWallet from useSession; fire-and-forget
+            void connectWallet(pk, 'phantom')
+          } catch {
+            // ignore connect errors
+          }
         } catch {
           // ignore
         }
@@ -189,6 +193,19 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
       if (wallet && wallet.connect && !wallet.connected) {
         await wallet.connect()
         // wallet.connect() should populate wallet.publicKey and connected flag
+        try {
+          const pk = wallet && (wallet as any).publicKey ? (wallet as any).publicKey.toBase58() : null
+          if (pk) {
+            // Register the connected pubkey with SessionManager (no unlock)
+            try {
+              await connectWallet(pk, 'phantom')
+            } catch {
+              // ignore
+            }
+          }
+        } catch {
+          // ignore
+        }
         setLastProviderIfPhantom()
         return
       }
@@ -208,6 +225,12 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
             const pk = new PublicKey(res.publicKey).toBase58()
             setPublicKeyStr(pk)
             setLastProviderIfPhantom()
+            try {
+              // Register with SessionManager (no unlock)
+              await connectWallet(pk, 'phantom')
+            } catch {
+              // ignore
+            }
           } catch {
             // ignore
           }
@@ -246,12 +269,18 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
       // ignore minor disconnect errors but surface if relevant
       setError(err?.message ?? String(err))
     } finally {
+      // Ensure SessionManager clears in-memory vault and pubkey state
+      try {
+        disconnectWallet()
+      } catch {
+        // ignore
+      }
       // Clear identity and last provider per spec (no secrets persisted)
       clearIdentity()
       clearLastWalletProvider()
       setPublicKeyStr(null)
     }
-  }, [wallet])
+  }, [wallet, disconnectWallet])
 
   const copyAddress = useCallback(async () => {
     if (!publicKeyStr) return
