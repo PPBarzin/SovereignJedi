@@ -1,6 +1,11 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+// Wallet providers are configured globally in `pages/_app.tsx` (ConnectionProvider + WalletProvider + WalletModalProvider)
+import ConnectWallet from '../src/components/wallet/ConnectWallet'
+import VerifyWallet from '../src/components/wallet/VerifyWallet'
+import IdentityStatus from '../src/components/wallet/IdentityStatus'
+import { loadIdentity, isVerified } from '../src/components/wallet/types'
 
 /**
  * Task 2.5 — UI Mock (Product-like)
@@ -221,11 +226,28 @@ export default function Home(): JSX.Element {
     e.stopPropagation()
     dragCounter.current = 0
     const f = e.dataTransfer?.files?.[0]
-    if (f) handleFile(f)
-    else setUiFlow('idle')
+    if (f) {
+      // Gate uploads: ensure the user has a verified identity
+      const identity = loadIdentity()
+      if (!isVerified(identity)) {
+        setUiFlow('idle')
+        window.alert('Signature required — please verify your wallet.')
+        return
+      }
+      handleFile(f)
+    } else setUiFlow('idle')
   }, [])
 
-  const openPicker = useCallback(() => fileInputRef.current?.click(), [])
+  const openPicker = useCallback(() => {
+    // Require a verified identity before allowing file selection (upload gating)
+    const identity = loadIdentity()
+    if (!isVerified(identity)) {
+      // Minimal UX feedback: block the picker and prompt the user to verify
+      window.alert('Signature required — please verify your wallet.')
+      return
+    }
+    fileInputRef.current?.click()
+  }, [])
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (f) handleFile(f)
@@ -234,6 +256,15 @@ export default function Home(): JSX.Element {
 
   // Simulate processing of a file drop / selection
   const handleFile = useCallback((file: File) => {
+    // Upload gating: require a verified identity before accepting files
+    const identity = loadIdentity()
+    if (!isVerified(identity)) {
+      setUiFlow('idle')
+      // Minimal UX: alert and block the action. Guides user to Verify flow.
+      window.alert('Signature required — please verify your wallet before uploading files.')
+      return
+    }
+
     // enter loading
     setUiFlow('loading')
     const id = `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -346,27 +377,11 @@ export default function Home(): JSX.Element {
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
-          <span
-            style={{
-              ...styles.badge,
-              color: walletConnected ? t.ok : t.subtext,
-              borderColor: walletConnected ? t.ok : t.border,
-              background: theme === 'light' ? '#fff' : t.mutedBg,
-            }}
-          >
-            Wallet: {walletConnected ? `Connected (${walletAddress})` : 'Not connected'}
-          </span>
-          <button
-            onClick={toggleWallet}
-            style={{
-              ...styles.btn,
-              borderColor: t.border,
-              background: t.mutedBg,
-              color: t.text,
-            }}
-          >
-            {walletConnected ? 'Disconnect (mock)' : 'Connect Wallet (mock)'}
-          </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <ConnectWallet />
+                <VerifyWallet />
+                <IdentityStatus />
+              </div>
         </div>
       </header>
 
@@ -497,9 +512,12 @@ export default function Home(): JSX.Element {
             </div>
 
             {filtered.map((f) => (
-              <button
+              <div
+                role="button"
                 key={f.id}
                 onClick={() => setActiveFile(f)}
+                tabIndex={0}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? setActiveFile(f) : null)}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 120px 140px 160px 100px',
@@ -545,11 +563,18 @@ export default function Home(): JSX.Element {
                 </div>
                 <div style={{ color: t.subtext }} suppressHydrationWarning>{hydrated ? new Date(f.dateISO).toLocaleString() : ''}</div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button aria-label="More actions" onClick={(e)=>{e.stopPropagation();}} style={{ background: 'transparent', border: '1px solid ' + t.border, borderRadius: 8, padding: '4px 8px', color: t.subtext }}>
+                  <div
+                    role="button"
+                    aria-label="More actions"
+                    tabIndex={0}
+                    onClick={(e)=>{e.stopPropagation();}}
+                    onKeyDown={(e)=>{ if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
+                    style={{ background: 'transparent', border: '1px solid ' + t.border, borderRadius: 8, padding: '4px 8px', color: t.subtext, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  >
                     ⋯
-                  </button>
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
 
             {filtered.length === 0 && (
