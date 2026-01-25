@@ -66,6 +66,7 @@ export default function UnlockVaultButton(): JSX.Element | null {
     isVaultUnlocked,
     unlockVault,
     walletPubKey,
+    connectWallet,
     // other helpers available from hook if needed
   } = useSession()
 
@@ -84,6 +85,27 @@ export default function UnlockVaultButton(): JSX.Element | null {
     setError(null)
     setLoading(true)
     try {
+      // If the session doesn't know about the connected wallet but the provider has a pubkey,
+      // register the pubkey with the SessionManager before attempting unlock.
+      // This ensures adapter-style connects (wallet-adapter / Phantom) are acknowledged.
+      try {
+        if (!walletPubKey && typeof window !== 'undefined') {
+          const anyWin: any = window as any
+          const sol = anyWin?.solana
+          if (sol && sol.publicKey) {
+            // sol.publicKey might be an object; coerce to string if possible
+            try {
+              const pk = String(sol.publicKey)
+              // call connectWallet to register the pubkey in SessionManager (no unlock)
+              await connectWallet(pk, 'phantom')
+            } catch {
+              // ignore failures to register; unlock will fail gracefully if still disconnected
+            }
+          }
+        }
+      } catch {
+        // ignore provider inspection errors
+      }
       // call the session-level unlock (will request wallet signature)
       await unlockVault()
       // on success, UI will reflect session.isVaultUnlocked()
@@ -95,7 +117,7 @@ export default function UnlockVaultButton(): JSX.Element | null {
     } finally {
       setLoading(false)
     }
-  }, [unlockVault])
+  }, [unlockVault, walletPubKey, connectWallet])
 
   // Button visible when a wallet pubkey exists (supports adapter-provided pubkey)
   // We show the Unlock action if either the session reports a connected wallet
