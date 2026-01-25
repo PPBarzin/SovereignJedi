@@ -19,23 +19,25 @@ import useSession from '../../../lib/session/useSession'
 
 const styles: Record<string, React.CSSProperties> = {
   btn: {
-    padding: '8px 12px',
-    borderRadius: 8,
+    padding: '12px 18px',
+    borderRadius: 10,
     cursor: 'pointer',
-    fontWeight: 700,
-    border: '1px solid rgba(0,0,0,0.08)',
-    background: '#0b93c7',
+    fontWeight: 800,
+    border: 'none',
+    background: '#008fc7',
     color: 'white',
+    fontSize: 15,
+    boxShadow: '0 6px 18px rgba(11,147,199,0.18)',
   },
   btnMuted: {
-    padding: '8px 12px',
-    borderRadius: 8,
+    padding: '10px 14px',
+    borderRadius: 10,
     cursor: 'not-allowed',
     fontWeight: 700,
     border: '1px solid rgba(0,0,0,0.04)',
     background: '#9fbfd6',
     color: 'white',
-    opacity: 0.9,
+    opacity: 0.95,
   },
   wrapper: {
     display: 'inline-flex',
@@ -100,12 +102,12 @@ export default function UnlockVaultButton(): JSX.Element | null {
   // or if a wallet pubkey is available from the provider.
   if (!isWalletConnected && !walletPubKey) return null
 
-  // If vault already unlocked, show disabled state
+  // If vault already unlocked, show disabled prominent state
   if (isVaultUnlocked) {
     return (
-      <div style={styles.wrapper}>
-        <button style={styles.btnMuted} disabled>
-          Vault Unlocked
+      <div style={{ ...styles.wrapper, alignItems: 'center' }}>
+        <button style={{ ...styles.btnMuted, minWidth: 220 }} disabled>
+          Vault Unlocked — Uploads Enabled
         </button>
         {justUnlocked && <div style={styles.okMsg}>Vault unlocked for this session.</div>}
       </div>
@@ -113,17 +115,22 @@ export default function UnlockVaultButton(): JSX.Element | null {
   }
 
   return (
-    <div style={styles.wrapper}>
+    <div style={{ ...styles.wrapper, alignItems: 'center' }}>
       <button
         onClick={() => void handleClick()}
-        style={loading ? styles.btnMuted : styles.btn}
+        style={loading ? { ...styles.btnMuted, minWidth: 260 } : { ...styles.btn, minWidth: 260, fontSize: 15, padding: '12px 18px', boxShadow: '0 6px 18px rgba(11,147,199,0.24)' }}
         disabled={loading}
         aria-disabled={loading}
       >
-        {loading ? 'Unlocking…' : 'Unlock Vault'}
+        {loading ? 'Unlocking…' : 'Unlock Vault (required to upload)'}
       </button>
 
-      {error && <div role="alert" style={styles.msg}>Error: {error}</div>}
+      {error && <div role="alert" style={{ ...styles.msg, marginTop: 8 }}>Error: {error}</div>}
+      {!isVaultUnlocked && !loading && (
+        <div style={{ marginTop: 6, fontSize: 13, color: '#f87171', maxWidth: 360 }}>
+          Vault locked — click "<strong>Unlock Vault (required to upload)</strong>" and approve the signature to unlock for this session.
+        </div>
+      )}
     </div>
   )
 }
