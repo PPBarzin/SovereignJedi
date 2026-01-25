@@ -100,7 +100,13 @@ export default function UnlockVaultButton(): JSX.Element | null {
   // Button visible when a wallet pubkey exists (supports adapter-provided pubkey)
   // We show the Unlock action if either the session reports a connected wallet
   // or if a wallet pubkey is available from the provider.
-  if (!isWalletConnected && !walletPubKey) return null
+  if (!isWalletConnected && !walletPubKey) {
+    // Also allow showing the button when a previously persisted identity exists (sj_identity).
+    // This makes the Unlock action discoverable if the provider or identity is present.
+    const hasPersistedIdentity =
+      typeof window !== 'undefined' && !!window.localStorage && !!window.localStorage.getItem('sj_identity')
+    if (!hasPersistedIdentity) return null
+  }
 
   // If vault already unlocked, show disabled prominent state
   if (isVaultUnlocked) {
