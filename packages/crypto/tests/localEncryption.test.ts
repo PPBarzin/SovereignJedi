@@ -13,11 +13,11 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-let sodium: any;
+let nacl: any;
 
 // Import the high-level crypto API from the package's src index.
 // The index re-exports the Task 4 functions (buildUnlockMessageV1, prepareUnlock, deriveKekFromSignature, encryptFile, decryptFile)
-import * as sjcrypto from '../src';
+import sjcrypto from '../src/v0_local_encryption/localEncryption';
 
 const utf8Encode = (s: string) => new TextEncoder().encode(s);
 const utf8Decode = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -25,26 +25,25 @@ const toBase64 = (b: Uint8Array) => Buffer.from(b).toString('base64');
 const fromBase64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
 
 beforeAll(async () => {
-  // Dynamically import libsodium-wrappers-sumo at test runtime and await initialization.
-  // This avoids static ESM import resolution issues in the test runner environment.
-  const mod = await import('libsodium-wrappers-sumo');
-  sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
-  if (sodium && sodium.ready) {
-    await sodium.ready;
-  }
+  // Dynamically import tweetnacl at test runtime.
+  // Using tweetnacl here provides a compact, well-supported signing primitive for tests.
+  const mod = await import('tweetnacl');
+  nacl = (mod && (mod as any).default) ? (mod as any).default : mod;
+  // tweetnacl does not require async initialization (no .ready), so we can proceed immediately.
 });
 
 // Helper: generate an ed25519 keypair (libsodium) and sign a message string (utf-8)
 // Returns { pubKeyBase64, pubKeyHex, sk, pk, sigBytes }
 async function generateEd25519KeypairAndSign(message: string) {
-  // libsodium.keypair returns Uint8Array for public/secret keys
-  const kp = sodium.crypto_sign_keypair();
+  // Use tweetnacl for test keypair + signing.
+  // tweetnacl.sign.keyPair() returns { publicKey, secretKey } as Uint8Array
+  const kp = nacl.sign.keyPair();
   const pk = kp.publicKey as Uint8Array;
-  const sk = kp.privateKey as Uint8Array;
+  const sk = kp.secretKey as Uint8Array;
 
-  // Sign the message deterministically with crypto_sign_detached
+  // Sign the message with tweetnacl.detached
   const msgBytes = utf8Encode(message);
-  const sig = sodium.crypto_sign_detached(msgBytes, sk) as Uint8Array;
+  const sig = nacl.sign.detached(msgBytes, sk) as Uint8Array;
 
   return {
     pubKeyBase64: toBase64(pk),
