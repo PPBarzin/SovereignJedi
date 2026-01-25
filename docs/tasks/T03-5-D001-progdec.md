@@ -69,7 +69,7 @@ Impact technique (liste d'impacts explicites)
   - `getVerified(): VerifiedState | null`
 - Stockage local :
   - `sj_identity` : Identity object (persisted proof-of-control)
-  - `sj_verified_v1` : signal non-sensible sauvegardé par SessionManager après unlock verification (metadata only)
+  - `sj_verified_v1` : signal non‑sensible (VaultVerified) sauvegardé par SessionManager après unlock verification (métadonnées only — ne contient aucune clé privée). Ce signal sert uniquement de métrique UX et ne confère aucun droit d'accès au vault sans `VaultUnlocked=true`.
   - Aucune persistance de secrets privés/keys/Keks.
 - UI :
   - `VerifyWallet` : fait uniquement la preuve d'identité (write `sj_identity`), NE DOIT PAS appeler `unlockVault()`.

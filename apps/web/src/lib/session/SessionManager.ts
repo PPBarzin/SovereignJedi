@@ -18,10 +18,13 @@
 import * as nacl from "tweetnacl";
 import bs58 from "bs58";
 
-export const MESSAGE_TO_SIGN = `SOVEREIGN_JEDI_UNLOCK_VAULT_V1
+export const MESSAGE_TO_SIGN = `SOVEREIGN_JEDI_UNLOCK_V1
 Cette signature déverrouille temporairement votre coffre pour la session en cours.`;
 
-// localStorage key for the non-sensitive verified signal
+// Keep a prefix constant for internal use, but expose the legacy constant expected by tests
+export const MESSAGE_PREFIX = MESSAGE_TO_SIGN;
+
+// localStorage key for the non-sensitive verified signal (legacy name for compatibility)
 const VERIFIED_STORAGE_KEY = "sj_verified_v1";
 
 // Default TTL for Verified signal (24 hours)
@@ -32,6 +35,9 @@ export type VerifiedState = {
   verifiedAt: number; // epoch ms
   expiresAt: number; // epoch ms
   walletProvider?: string;
+  // Per-session metadata to mitigate replay: nonce and issuedAt (ISO)
+  nonce?: string;
+  issuedAt?: string; // ISO timestamp
 };
 
 function nowMs(): number {
@@ -216,7 +222,33 @@ export class SessionManager {
       throw new Error("Wallet not connected");
     }
 
-    const messageBytes = new TextEncoder().encode(MESSAGE_TO_SIGN);
+    // Build a per-session unlock message including domain, publicKey, issuedAt and nonce.
+    // This helps prevent message replay attacks while keeping verification entirely client-side.
+    const issuedAtIso = new Date().toISOString();
+    const nonce = (function () {
+      try {
+        if (typeof window !== "undefined" && window.crypto && typeof window.crypto.getRandomValues === "function") {
+          const arr = new Uint8Array(16);
+          window.crypto.getRandomValues(arr);
+          return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+        }
+      } catch {
+        // fallthrough
+      }
+      // Fallback pseudo-random value (non-cryptographic) — acceptable as fallback only.
+      return Math.random().toString(16).slice(2) + Date.now().toString(16);
+    })();
+
+    const domain = (typeof window !== "undefined" && window.location && window.location.host) ? window.location.host : "localhost";
+    const message = `${MESSAGE_PREFIX}
+domain: ${domain}
+publicKey: ${this.walletPubKey}
+issuedAt: ${issuedAtIso}
+nonce: ${nonce}
+
+Cette signature déverrouille temporairement votre coffre pour la session en cours.`;
+
+    const messageBytes = new TextEncoder().encode(message);
 
     // 1) Obtain a signature via the injected signer, if present
     let signatureBytes: Uint8Array | null = null;
@@ -266,14 +298,17 @@ export class SessionManager {
     }
     if (!ok) throw new Error("Signature verification failed");
 
-    // Persist a non-sensitive Verified signal (metadata only)
+    // Persist a non-sensitive Verified signal (metadata only) and include nonce/issuedAt
     const verifiedAt = nowMs();
-    const expiresAt = verifiedAt + DEFAULT_VERIFIED_TTL_MS;
+    const ttlMs = DEFAULT_VERIFIED_TTL_MS; // default 24h as per project doc
+    const expiresAt = verifiedAt + ttlMs;
     const v: VerifiedState = {
       walletPubKey: this.walletPubKey,
       verifiedAt,
       expiresAt,
       walletProvider: this.walletProvider || undefined,
+      nonce,
+      issuedAt: issuedAtIso,
     };
     saveVerified(v);
     this.verified = v;
