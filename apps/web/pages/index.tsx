@@ -7,6 +7,7 @@ import VerifyWallet from '../src/components/wallet/VerifyWallet'
 import IdentityStatus from '../src/components/wallet/IdentityStatus'
 import UnlockVaultButton from '../src/components/wallet/ui/UnlockVaultButton'
 import ProtectedAction from '../src/components/wallet/ui/ProtectedAction'
+import useSession from '../src/lib/session/useSession'
 import { loadIdentity, isVerified } from '../src/components/wallet/types'
 
 /**
@@ -233,7 +234,7 @@ export default function Home(): JSX.Element {
     const f = e.dataTransfer?.files?.[0]
     if (f) {
       // Gate uploads: require vault unlocked (SessionManager). Do NOT rely on Verified.
-      if (!session.isVaultUnlocked()) {
+      if (!session.isVaultUnlocked) {
         setUiFlow('idle')
         window.alert('Vault locked — unlock the vault to upload files.')
         return
@@ -245,7 +246,7 @@ export default function Home(): JSX.Element {
   const openPicker = useCallback(() => {
     // Require vault unlocked before allowing file selection (upload gating)
     // Do NOT use Verified as a gate here.
-    if (!session.isVaultUnlocked()) {
+    if (!session.isVaultUnlocked) {
       // Minimal UX feedback: block the picker and prompt the user to unlock
       window.alert('Vault locked — unlock the vault to select files.')
       return
@@ -262,7 +263,7 @@ export default function Home(): JSX.Element {
   const handleFile = useCallback((file: File) => {
     // Upload gating: require vault unlocked before accepting files
     // Do NOT use Verified as a gate here.
-    if (!session.isVaultUnlocked()) {
+    if (!session.isVaultUnlocked) {
       setUiFlow('idle')
       // Minimal UX: alert and block the action. Guides user to Unlock flow.
       window.alert('Vault locked — unlock the vault before uploading files.')
