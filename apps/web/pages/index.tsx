@@ -366,12 +366,7 @@ export default function Home(): JSX.Element {
             }}
           />
           <strong style={{ letterSpacing: 0.3 }}>Sovereign Jedi</strong>
-          <div id="crypto-smoke-root" style={{ marginTop: 12 }}>
-            {/* Crypto smoke UI placeholder (manual run) */}
-            {/* The real CryptoSmoke component lives at: */}
-            {/* apps/web/src/components/crypto-smoke/CryptoSmoke.tsx */}
-            {/* It will be mounted client-side to this container to validate libsodium WASM in-browser. */}
-          </div>
+
         </div>
 
         <div style={styles.headerRight}>
