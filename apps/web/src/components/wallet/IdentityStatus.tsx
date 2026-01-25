@@ -14,6 +14,7 @@ import {
   getLastWalletProvider,
   STORAGE_KEY_IDENTITY,
 } from './types'
+import useSession from '../../lib/session/useSession'
 
 /**
  * IdentityStatus
@@ -62,6 +63,9 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
       return null
     }
   }, [])
+
+  // Session state (VaultUnlocked) — used only for UI status display (non-sensitive)
+  const session = useSession()
 
   // Use theme tokens (dark by default here). In a follow-up we can wire this to a global theme switch.
   const t = getTokens('dark')
@@ -169,10 +173,14 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
         <div style={left}>
           <div style={title}>Identity</div>
           <div style={sub}>
-            Status:{' '}
-            <span style={{ color: statusBadge.color, fontWeight: 700 }}>{statusBadge.text}</span>
-            {lastProvider ? <span style={providerNote}> • {lastProvider}</span> : null}
-          </div>
+            <div style={{ ...sub }}>
+              Identity:{' '}
+              <span style={{ color: statusBadge.color, fontWeight: 700 }}>{statusBadge.text}</span>
+              {lastProvider ? <span style={providerNote}> • {lastProvider}</span> : null}
+              <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
+                Vault: {session?.isVaultUnlocked ? 'Unlocked' : 'Locked'}
+              </div>
+            </div>
 
           {identity && identity.publicKey ? (
             <div style={identityRow}>
