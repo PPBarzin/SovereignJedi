@@ -9,6 +9,7 @@ import UnlockVaultButton from '../src/components/wallet/ui/UnlockVaultButton'
 import ProtectedAction from '../src/components/wallet/ui/ProtectedAction'
 import useSession from '../src/lib/session/useSession'
 import { loadIdentity, isVerified } from '../src/components/wallet/types'
+import { canPerformVaultActions } from '../src/lib/session/vaultGuards'
 
 /**
  * Task 2.5 — UI Mock (Product-like)
@@ -233,10 +234,11 @@ export default function Home(): JSX.Element {
     dragCounter.current = 0
     const f = e.dataTransfer?.files?.[0]
     if (f) {
-      // Gate uploads: require vault unlocked (SessionManager). Do NOT rely on Verified.
-      if (!session.isVaultUnlocked) {
+      // Gate uploads: require both IdentityVerified AND VaultUnlocked
+      if (!canPerformVaultActions()) {
         setUiFlow('idle')
-        window.alert('Vault locked — unlock the vault to upload files.')
+        // Give actionable guidance to the user
+        window.alert('Upload denied — you must both (1) Verify identity (Sign to Verify) and (2) Unlock Vault (Unlock Vault) before uploading.')
         return
       }
       handleFile(f)
@@ -244,11 +246,10 @@ export default function Home(): JSX.Element {
   }, [session])
 
   const openPicker = useCallback(() => {
-    // Require vault unlocked before allowing file selection (upload gating)
-    // Do NOT use Verified as a gate here.
-    if (!session.isVaultUnlocked) {
-      // Minimal UX feedback: block the picker and prompt the user to unlock
-      window.alert('Vault locked — unlock the vault to select files.')
+    // Require both IdentityVerified and VaultUnlocked before allowing file selection
+    if (!canPerformVaultActions()) {
+      // Minimal UX feedback: block the picker and prompt the user
+      window.alert('Selection denied — Verify identity and Unlock Vault before selecting files.')
       return
     }
     fileInputRef.current?.click()
@@ -261,12 +262,11 @@ export default function Home(): JSX.Element {
 
   // Simulate processing of a file drop / selection
   const handleFile = useCallback((file: File) => {
-    // Upload gating: require vault unlocked before accepting files
-    // Do NOT use Verified as a gate here.
-    if (!session.isVaultUnlocked) {
+    // Upload gating: require both IdentityVerified and VaultUnlocked before accepting files
+    if (!canPerformVaultActions()) {
       setUiFlow('idle')
-      // Minimal UX: alert and block the action. Guides user to Unlock flow.
-      window.alert('Vault locked — unlock the vault before uploading files.')
+      // Minimal UX: alert and block the action. Guides user to both Verify and Unlock flows.
+      window.alert('Upload denied — Verify identity and Unlock Vault before uploading files.')
       return
     }
 
