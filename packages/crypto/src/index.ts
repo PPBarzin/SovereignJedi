@@ -22,9 +22,87 @@
  * The functions are written in portable TypeScript and avoid any runtime side-effects.
  */
 
-/* localEncryption re-export removed to avoid circular import; Task 4 APIs are exposed
-   by importing the module directly where needed to keep package entrypoint stable. */
-const encoder = new TextEncoder();
+/* Task 4 public API wrappers — dynamic import to avoid circular runtime import and prevent
+   circular module initialization at package entrypoint.
+
+   Exports (named):
+   - prepareUnlock
+   - buildUnlockMessageV1
+   - deriveKekFromSignature
+   - encryptFile
+   - decryptFile
+
+   Notes:
+   - These wrappers dynamically import the implementation in `src/v0_local_encryption/localEncryption`
+     at call time so the package entrypoint does not create a circular runtime dependency.
+   - Types are re-exported as type-only exports from `src/v0_local_encryption/types` so TypeScript
+     consumers can import the shapes without introducing runtime imports.
+   - The implementation enforces libsodium-only; the browser integration is expected to provide
+     `globalThis.sodium` or otherwise make `libsodium-wrappers-sumo` available at runtime. If absent,
+     the underlying implementation will fail hard (throw).
+*/
+export type { EncryptedFile, Envelope, UnlockMessageV1, BuildUnlockResult } from './v0_local_encryption/types';
+
+/**
+ * Dynamic wrappers that forward calls to the implementation module.
+ * These are async to allow dynamic import without creating circular imports.
+ */
+export async function buildUnlockMessageV1(params: {
+  origin?: string;
+  wallet: string;
+  vaultId?: string;
+  nonceBytes?: Uint8Array;
+  issuedAt?: string;
+  expiresAt?: string;
+}): Promise<BuildUnlockResult> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.buildUnlockMessageV1(params);
+}
+
+export async function prepareUnlock(params: {
+  origin?: string;
+  wallet: string;
+  vaultId?: string;
+  saltBytes?: Uint8Array;
+}): Promise<{ salt: Uint8Array; unlock: BuildUnlockResult }> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.prepareUnlock(params);
+}
+
+export async function deriveKekFromSignature(signatureBytes: Uint8Array, saltBytes: Uint8Array | null): Promise<Uint8Array> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.deriveKekFromSignature(signatureBytes, saltBytes);
+}
+
+export async function generateFileKey(): Promise<Uint8Array> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.generateFileKey();
+}
+
+export async function encryptFile(
+  plaintext: Uint8Array,
+  options: {
+    fileKey?: Uint8Array;
+    kek: Uint8Array;
+    salt: Uint8Array;
+    filename?: string;
+    mimeType?: string;
+  }
+): Promise<{
+  encryptedFile: EncryptedFile;
+  envelope: Envelope;
+  fileKey?: Uint8Array;
+}> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.encryptFile(plaintext, options);
+}
+
+export async function decryptFile(encryptedFile: EncryptedFile, envelope: Envelope, kek: Uint8Array): Promise<Uint8Array> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.decryptFile(encryptedFile, envelope, kek);
+}
+
+ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 function getSubtle(): SubtleCrypto {
