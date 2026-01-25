@@ -175,7 +175,22 @@ export function useSession(): UseSessionReturn {
         refresh()
       }
     }
+
+    // Listen to explicit session-change events dispatched by SessionManager
+    // This avoids reliance on polling and provides immediate UI sync.
+    const onSessionChanged = (() => {
+      // event listener wrapper
+      return (ev?: Event) => {
+        try {
+          refresh()
+        } catch {
+          // ignore
+        }
+      }
+    })()
+
     window.addEventListener('storage', onStorage)
+    window.addEventListener('sj-session-changed', onSessionChanged as EventListener)
 
     return () => {
       try {
@@ -185,38 +200,25 @@ export function useSession(): UseSessionReturn {
           sol.removeListener('connect', handleConnect)
         }
       } catch {
-        // ignore
+        // ignore subscription failures
       }
       window.removeEventListener('storage', onStorage)
+      window.removeEventListener('sj-session-changed', onSessionChanged as EventListener)
     }
     // We purposely do not include `session` in deps to avoid re-subscribing to events.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh])
 
-  // Keep a small interval to refresh vault state in case it changes from other sources
-  // (SessionManager is in-memory but UI and other components may update storage).
+  // Initial sync; further updates are driven by the 'sj-session-changed' event
+  // and storage events handled above. Polling is removed to avoid transient races.
   useEffect(() => {
-    const id = setInterval(() => {
-      // Lightweight sync
-      const vault = session.isVaultUnlocked()
-      const prevVault = isVaultUnlocked
-      if (vault !== prevVault) {
-        setIsVaultUnlocked(vault)
-      }
-      const ver = session.getVerified()
-      // shallow compare by reference/time
-      if (ver?.expiresAt !== verified?.expiresAt || ver?.verifiedAt !== verified?.verifiedAt) {
-        setVerified(ver)
-      }
-      const pub = session.getWalletPubKey()
-      if (pub !== walletPubKey) {
-        setWalletPubKey(pub)
-        setIsWalletConnected(Boolean(pub))
-      }
-    }, 800) // small interval; keeps UI responsive but light-weight
-    return () => clearInterval(id)
+    try {
+      refresh()
+    } catch {
+      // ignore
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVaultUnlocked, verified, walletPubKey])
+  }, [])
 
   return {
     connectWallet,

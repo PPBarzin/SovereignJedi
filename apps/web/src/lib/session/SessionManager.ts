@@ -18,11 +18,11 @@
 import * as nacl from "tweetnacl";
 import bs58 from "bs58";
 
-export const MESSAGE_TO_SIGN = `SOVEREIGN_JEDI_UNLOCK_V1
+export const MESSAGE_TO_SIGN = `SOVEREIGN_JEDI_UNLOCK_VAULT_V1
 Cette signature déverrouille temporairement votre coffre pour la session en cours.`;
 
-// Keep a prefix constant for internal use, but expose the legacy constant expected by tests
-export const MESSAGE_PREFIX = MESSAGE_TO_SIGN;
+// Internal prefix used to build per-call messages (includes nonce/issuedAt).
+export const MESSAGE_PREFIX = `SOVEREIGN_JEDI_UNLOCK_V2`;
 
 // localStorage key for the non-sensitive verified signal (legacy name for compatibility)
 const VERIFIED_STORAGE_KEY = "sj_verified_v1";
@@ -184,15 +184,40 @@ export class SessionManager {
    * @param pubKey - wallet public key (base58)
    * @param provider - optional provider id (e.g. "phantom")
    */
-  async connectWallet(pubKey: string, provider?: string): Promise<void> {
+  async connectWallet(pubKey: any, provider?: string): Promise<void> {
+    // Normalize pubKey argument to a base58 string if possible.
+    // Accepts string, PublicKey-like objects (with toBase58), or other.
+    let normalizedPubKey: string | null = null;
+    try {
+      if (!pubKey) {
+        normalizedPubKey = null;
+      } else if (typeof pubKey === "string") {
+        normalizedPubKey = pubKey;
+      } else if (pubKey && typeof (pubKey as any).toBase58 === "function") {
+        // PublicKey-like object from @solana/web3.js
+        normalizedPubKey = (pubKey as any).toBase58();
+      } else if (pubKey && typeof pubKey.toString === "function") {
+        normalizedPubKey = String(pubKey);
+      } else {
+        normalizedPubKey = null;
+      }
+    } catch {
+      // fallback to string coercion
+      try {
+        normalizedPubKey = String(pubKey);
+      } catch {
+        normalizedPubKey = null;
+      }
+    }
+
     // Always lock the vault on connect
     const prevPubKey = this.walletPubKey;
-    this.walletPubKey = pubKey;
+    this.walletPubKey = normalizedPubKey;
     this.walletProvider = provider || null;
     this.vaultUnlocked = false;
 
     // If the persisted Verified signal belongs to another pubkey, clear it
-    if (this.verified && this.verified.walletPubKey !== pubKey) {
+    if (this.verified && this.verified.walletPubKey !== normalizedPubKey) {
       clearVerified();
       this.verified = null;
     }
@@ -200,15 +225,24 @@ export class SessionManager {
     // If local storage contains a still-valid verified state for this pubKey, keep it in memory
     if (!this.verified) {
       const loaded = loadVerified();
-      if (loaded && loaded.walletPubKey === pubKey) {
+      if (loaded && loaded.walletPubKey === normalizedPubKey) {
         this.verified = loaded;
       }
     }
 
     // If wallet changed unexpectedly (hot-switch), ensure Verified cleared (no hot-switch allowed)
-    if (prevPubKey && prevPubKey !== pubKey) {
+    if (prevPubKey && prevPubKey !== normalizedPubKey) {
       // the above logic already cleared verified if needed; keep vault locked
       this.vaultUnlocked = false;
+    }
+
+    // Notify UI / hooks that session state changed so listeners can refresh immediately.
+    try {
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new Event("sj-session-changed"));
+      }
+    } catch {
+      // ignore browser quirks
     }
   }
 
@@ -315,6 +349,15 @@ Cette signature déverrouille temporairement votre coffre pour la session en cou
 
     // Set VaultUnlocked in memory only
     this.vaultUnlocked = true;
+
+    // Notify listeners immediately that session state changed (vault unlocked)
+    try {
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new Event("sj-session-changed"));
+      }
+    } catch {
+      // ignore
+    }
   }
 
   /**
@@ -322,6 +365,14 @@ Cette signature déverrouille temporairement votre coffre pour la session en cou
    */
   lockVault(): void {
     this.vaultUnlocked = false;
+    // Notify listeners immediately that session state changed (vault locked)
+    try {
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new Event("sj-session-changed"));
+      }
+    } catch {
+      // ignore
+    }
   }
 
   /**
@@ -363,6 +414,14 @@ Cette signature déverrouille temporairement votre coffre pour la session en cou
     this.vaultUnlocked = false;
     clearVerified();
     this.verified = null;
+    // Notify listeners immediately that session state changed (wallet disconnected)
+    try {
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new Event("sj-session-changed"));
+      }
+    } catch {
+      // ignore
+    }
   }
 }
 
