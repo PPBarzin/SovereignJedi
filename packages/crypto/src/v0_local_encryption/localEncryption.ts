@@ -198,11 +198,11 @@ export function generateFileKey(): Uint8Array {
  * Returns null when libsodium cannot be loaded.
  */
 async function getSodium(): Promise<any> {
-  // Strict libsodium-only resolver.
+  // Strict libsodium-only resolver (simplified).
   // Behaviour:
   //  - If globalThis.sodium exists, reuse it (await readiness).
-  //  - Attempt to import 'libsodium-wrappers-sumo' then 'libsodium-wrappers'.
-  //  - If none can be loaded, fail hard with an explicit error (no fallback shim).
+  //  - Attempt to import 'libsodium-wrappers-sumo' only (preferred and required).
+  //  - If it cannot be loaded, fail hard with an explicit error.
   if (typeof (globalThis as any).sodium !== 'undefined') {
     const g = (globalThis as any).sodium;
     if (g && g.ready) {
@@ -211,29 +211,20 @@ async function getSodium(): Promise<any> {
     return g;
   }
 
-  // Try libsodium-wrappers-sumo first (preferred)
   try {
+    // Only attempt the sumo build. This package is required for Task 4.
     const mod = await import('libsodium-wrappers-sumo');
     const sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
     if (sodium && sodium.ready) {
       await sodium.ready;
     }
     return sodium;
-  } catch (e1) {
-    // Try the non-sumo package as a fallback
-    try {
-      const mod2 = await import('libsodium-wrappers');
-      const sodium2 = (mod2 && (mod2 as any).default) ? (mod2 as any).default : mod2;
-      if (sodium2 && sodium2.ready) {
-        await sodium2.ready;
-      }
-      return sodium2;
-    } catch (e2) {
-      // Fail hard: libsodium is required for Task 4 (XChaCha20-Poly1305)
-      throw new Error(
-        'libsodium is required but could not be loaded. Install and expose "libsodium-wrappers-sumo" or "libsodium-wrappers", and ensure the runtime can resolve it.'
-      );
-    }
+  } catch (err) {
+    // Fail hard and give actionable error message.
+    throw new Error(
+      'libsodium-wrappers-sumo is required but could not be loaded. Install and ensure the runtime can resolve "libsodium-wrappers-sumo". Original error: ' +
+        (err && err.message ? err.message : String(err))
+    );
   }
 }
 

@@ -10,8 +10,8 @@ Décision
 Pour la Task 4 (Local encryption pipeline — MVP) nous adoptons les choix suivants, applicables immédiatement à l'implémentation et aux tests :
 
 1. AEAD = `XChaCha20-Poly1305`  
-   - Lib : `libsodium-wrappers` (ou `libsodium-wrappers-sumo` si on a besoin de perf/streaming).  
-   - Nonce/IV pour chiffrement des fichiers : 24 bytes CSPRNG par chiffrement.
+  - Lib : `libsodium-wrappers-sumo` (WASM build) — REQUIRED. Aucune alternative ou fallback n'est autorisée pour la Task 4.  
+  - Nonce/IV pour chiffrement des fichiers : 24 bytes CSPRNG par chiffrement.
 
 2. Dérivation de la KEK (vault session)  
    - IKM = `SHA-256(signature_bytes)` (on pré‑hash la signature).  

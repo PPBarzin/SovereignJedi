@@ -29,7 +29,7 @@
     "dist"
   ],
   "dependencies": {
-    "libsodium-wrappers-sumo": "^0.7.9",
+    "libsodium-wrappers-sumo": "^0.7.16",
     "canonicalize": "^1.0.0"
   },
   "devDependencies": {
