@@ -47,7 +47,7 @@ beforeAll(async () => {
 
     // 2) Attempt to load the deterministic copy in packages/crypto/test-assets/libsodium.
     // This file should be created by the reproducible sync script.
-    const localBundlePath = require('path').join(process.cwd(), 'packages', 'crypto', 'test-assets', 'libsodium', 'libsodium-wrappers.js');
+    const localBundlePath = require('path').join(__dirname, '..', 'test-assets', 'libsodium', 'libsodium-wrappers.js');
     try {
       // Use require to execute the bundle which should attach globalThis.sodium
       // The bundle file is the distribution JS that sets up `sodium` on the global.
@@ -152,9 +152,6 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
     });
 
     const { encryptedFile, envelope } = encResult;
-...
-    await expect(sjcrypto.decryptFile(encryptedFile, wrongEnvelope, kek)).rejects.toThrow();
-  });
 
     // 1) tamper ciphertext (flip one byte)
     const ct = fromBase64(encryptedFile.ciphertext);
@@ -188,7 +185,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
     await expect(sjcrypto.decryptFile(encryptedFile, tamperedEnvelope, kek)).rejects.toThrow();
 
     // 5) tamper salt: different salt will result in different KEK. Using original kek with mutated salt should fail.
-    const wrongSalt = sjcrypto.prepareUnlock({ wallet: walletId }).salt; // new salt
+    const wrongSalt = (await sjcrypto.prepareUnlock({ wallet: walletId })).salt; // new salt
     const wrongEnvelope = {
       ...envelope,
       kekDerivation: { ...envelope.kekDerivation, salt: toBase64(wrongSalt) },
