@@ -137,7 +137,8 @@ async function main() {
       // Try a second resolution without explicit paths
       try {
         resolved = require.resolve(MODULE_NAME);
-      } catch (err) {
+      } catch (resolveErr) {
+        // Log via the `err(...)` helper (function) — do NOT shadow the helper name.
         err("Unable to resolve module", MODULE_NAME);
         err(
           "Ensure it is installed (pnpm add -w libsodium-wrappers-sumo --filter @sj/crypto)",
