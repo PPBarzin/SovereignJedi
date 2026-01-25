@@ -28,7 +28,10 @@
   "files": [
     "dist"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "libsodium-wrappers": "^0.7.9",
+    "canonicalize": "^1.0.0"
+  },
   "devDependencies": {
     "typescript": "^5.1.6",
     "vitest": "^1.0.0",

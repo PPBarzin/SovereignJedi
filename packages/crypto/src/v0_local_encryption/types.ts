@@ -8,6 +8,22 @@
  *  - Envelope                               : wrapped fileKey metadata and wrapped ciphertext
  *  - EncryptResult                          : convenience result returned by encryptFile
  *
+ * Protocol notes (explicit)
+ * -------------------------
+ * - Salt is a first-class protocol parameter (NOT merely "record-keeping").
+ *   The caller MUST generate a per-envelope `salt` (16 or 32 bytes CSPRNG) and:
+ *     1) call `prepareUnlock(...)` (or equivalent) to obtain the `unlock` object and the `salt`;
+ *     2) have the wallet sign the canonical `unlock.messageToSign`;
+ *     3) derive the KEK via `deriveKekFromSignature(signatureBytes, salt)`;
+ *     4) call `encryptFile(...)` passing the derived `kek` and the same `salt`;
+ *     5) persist `{ encryptedFile, envelope }` where `envelope.kekDerivation.salt` contains the base64-encoded salt.
+ *
+ * - The API surfaces a `prepareUnlock`/`buildUnlockMessageV1` pattern: prepare (generate salt + canonical unlock),
+ *   sign, derive KEK with salt, then encrypt. This makes the salt usage explicit and avoids subtle protocol mistakes.
+ *
+ * - File keys (`fileKey`) MUST NEVER be exposed in production APIs or persisted. In the implementation the
+ *   only time `fileKey` may be returned is under test-only conditions (NODE_ENV === 'test' or explicit test flag).
+ *
  * Notes:
  *  - Binary fields in the JSON artefacts are represented as base64-encoded strings.
  *  - `walletPubKey` values are represented as base58 strings.
