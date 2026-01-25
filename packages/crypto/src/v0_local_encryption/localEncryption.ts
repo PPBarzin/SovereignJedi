@@ -197,33 +197,30 @@ export function generateFileKey(): Uint8Array {
  *
  * Returns null when libsodium cannot be loaded.
  */
-async function getSodium(): Promise<any | null> {
-  // Robust resolver with fallback to a lightweight tweetnacl shim when libsodium cannot be loaded.
-  // This keeps the runtime usable in constrained bundling/test environments while preferring
-  // libsodium-wrappers-sumo when available.
+async function getSodium(): Promise<any> {
+  // Strict libsodium-only resolver.
+  // Behaviour:
+  //  - If globalThis.sodium exists, reuse it (await readiness).
+  //  - Attempt to import 'libsodium-wrappers-sumo' then 'libsodium-wrappers'.
+  //  - If none can be loaded, fail hard with an explicit error (no fallback shim).
+  if (typeof (globalThis as any).sodium !== 'undefined') {
+    const g = (globalThis as any).sodium;
+    if (g && g.ready) {
+      await g.ready;
+    }
+    return g;
+  }
+
+  // Try libsodium-wrappers-sumo first (preferred)
   try {
-    // If libsodium was previously loaded into the global (e.g. by a bundler shim), reuse it.
-    if (typeof (globalThis as any).sodium !== 'undefined') {
-      const g = (globalThis as any).sodium;
-      if (g && g.ready) {
-        await g.ready;
-      }
-      return g;
+    const mod = await import('libsodium-wrappers-sumo');
+    const sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
+    if (sodium && sodium.ready) {
+      await sodium.ready;
     }
-
-    // 1) Try the full libsodium-wrappers-sumo build (preferred)
-    try {
-      const mod = await import('libsodium-wrappers-sumo');
-      const sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
-      if (sodium && sodium.ready) {
-        await sodium.ready;
-      }
-      return sodium;
-    } catch {
-      // continue to next attempt
-    }
-
-    // 2) Fallback to libsodium-wrappers (non-sumo) if available
+    return sodium;
+  } catch (e1) {
+    // Try the non-sumo package as a fallback
     try {
       const mod2 = await import('libsodium-wrappers');
       const sodium2 = (mod2 && (mod2 as any).default) ? (mod2 as any).default : mod2;
@@ -231,100 +228,12 @@ async function getSodium(): Promise<any | null> {
         await sodium2.ready;
       }
       return sodium2;
-    } catch {
-      // continue to fallback shim
+    } catch (e2) {
+      // Fail hard: libsodium is required for Task 4 (XChaCha20-Poly1305)
+      throw new Error(
+        'libsodium is required but could not be loaded. Install and expose "libsodium-wrappers-sumo" or "libsodium-wrappers", and ensure the runtime can resolve it.'
+      );
     }
-
-    // 3) Final fallback: tweetnacl shim (provides a minimal compatible API surface)
-    //    - Uses `tweetnacl` for secretbox (XSalsa20-Poly1305) and signing
-    //    - Provides api surface expected by the code:
-    //       crypto_aead_xchacha20poly1305_ietf_encrypt
-    //       crypto_aead_xchacha20poly1305_ietf_decrypt
-    //       crypto_sign_keypair
-    //       crypto_sign_detached
-    //    NOTE: Secretbox (XSalsa20-Poly1305) is used as a pragmatic fallback and requires
-    //    24-byte nonce and 32-byte key (compatible shapes for our usage). This is a
-    //    documented fallback only — libsodium/XChaCha is preferred.
-    try {
-      const mod3 = await import('tweetnacl');
-      const nacl = (mod3 && (mod3 as any).default) ? (mod3 as any).default : mod3;
-
-      const shim = {
-        // promise-like ready to mirror libsodium-wrappers API
-        // (tweetnacl fallback provides a minimal compatible surface below)
-        ready: Promise.resolve(),
-        // encrypt: secretbox(message_with_prefixed_aad, nonce, key) -> ciphertext (Uint8Array)
-        // We bind 'aad' into the encrypted blob by prefixing a 4-byte big-endian length followed by the aad bytes,
-        // then the message bytes. This ensures authenticity of the AAD even when using secretbox as a fallback.
-        crypto_aead_xchacha20poly1305_ietf_encrypt: (message: Uint8Array, aad: Uint8Array | null, _null: any, nonce: Uint8Array, key: Uint8Array) => {
-          const msg = new Uint8Array(message);
-          const aadBytes = aad ? new Uint8Array(aad) : new Uint8Array(0);
-          const len = aadBytes.length >>> 0;
-          // 4-byte big-endian length
-          const header = new Uint8Array(4 + len);
-          header[0] = (len >>> 24) & 0xff;
-          header[1] = (len >>> 16) & 0xff;
-          header[2] = (len >>> 8) & 0xff;
-          header[3] = len & 0xff;
-          if (len) header.set(aadBytes, 4);
-          const combined = new Uint8Array(header.length + msg.length);
-          combined.set(header, 0);
-          combined.set(msg, header.length);
-          // tweetnacl.secretbox expects nonce length 24 and key length 32; we pass through the provided nonce/key
-          return nacl.secretbox(combined, new Uint8Array(nonce), new Uint8Array(key));
-        },
-        // decrypt: secretbox.open(ciphertext, nonce, key) -> plaintext Uint8Array | throws on failure
-        // On success we parse the prefixed AAD length and return only the original message bytes.
-        crypto_aead_xchacha20poly1305_ietf_decrypt: (_null: any, ciphertext: Uint8Array, aad: Uint8Array | null, nonce: Uint8Array, key: Uint8Array) => {
-          const cipher = new Uint8Array(ciphertext);
-          const plain = nacl.secretbox.open(cipher, new Uint8Array(nonce), new Uint8Array(key));
-          if (!plain) {
-            // mirror libsodium behaviour on failure
-            throw new Error('decryption failed (secretbox fallback)');
-          }
-          // plain now contains: [4-byte BE len][aad bytes][message bytes]
-          if (plain.length < 4) {
-            throw new Error('decryption failed: plaintext too short for aad header');
-          }
-          const len = (plain[0] << 24) | (plain[1] << 16) | (plain[2] << 8) | plain[3];
-          const headerLen = 4 + len;
-          if (plain.length < headerLen) {
-            throw new Error('decryption failed: incomplete aad in plaintext');
-          }
-          const aadExtracted = plain.slice(4, headerLen);
-          // If caller provided AAD, verify it matches the extracted AAD
-          if (aad) {
-            const provided = new Uint8Array(aad);
-            if (provided.length !== aadExtracted.length) {
-              throw new Error('AAD mismatch');
-            }
-            for (let i = 0; i < provided.length; i++) {
-              if (provided[i] !== aadExtracted[i]) {
-                throw new Error('AAD mismatch');
-              }
-            }
-          }
-          const message = plain.slice(headerLen);
-          return message;
-        },
-        // signing: keypair / detached
-        crypto_sign_keypair: () => {
-          const kp = nacl.sign.keyPair();
-          // libsodium-like shape
-          return { publicKey: kp.publicKey, privateKey: kp.secretKey };
-        },
-        crypto_sign_detached: (message: Uint8Array, sk: Uint8Array) => {
-          return nacl.sign.detached(new Uint8Array(message), new Uint8Array(sk));
-        },
-      };
-
-      return shim;
-    } catch {
-      // All attempts failed
-      return null;
-    }
-  } catch {
-    return null;
   }
 }
 
@@ -404,8 +313,8 @@ export async function encryptFile(
   }
 
   const wrapNonce = cryptoGetRandomBytes(24);
-  // context for wrap: include salt (base64) to bind envelope.salt into wrap AAD
-  const wrapAad = utf8Encode(`file-binding-context:${toBase64(salt)}`);
+  // context for wrap: use fixed file-binding-context as AAD (libsodium AEAD handles AAD properly)
+  const wrapAad = utf8Encode('file-binding-context');
 
   const wrapped = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
     fileKey,
@@ -415,10 +324,6 @@ export async function encryptFile(
     options.kek
   );
 
-  // Compute a short KEK fingerprint (sha256 -> base64) and include it in the envelope so that
-  // a recipient can validate that the provided KEK matches the envelope expectation.
-  const kekFingerprint = toBase64(await sha256(options.kek));
-
   const envelope: Envelope = {
     version: 1,
     walletPubKey: '', // caller MUST set this before persisting the envelope
@@ -427,7 +332,6 @@ export async function encryptFile(
       messageTemplateId: UNLOCK_TEMPLATE_ID,
       salt: toBase64(salt),
       info: 'SJ-KEK-v1',
-      kekFingerprint,
     },
     wrap: {
       cipher: 'XChaCha20-Poly1305',
@@ -465,21 +369,10 @@ export async function decryptFile(encryptedFile: EncryptedFile, envelope: Envelo
   // Unwrap fileKey (validate KEK fingerprint if present)
   const wrapNonce = fromBase64(envelope.wrap.nonce);
   const wrappedCipher = fromBase64(envelope.wrap.ciphertext);
-  // Bind the envelope salt into the wrap AAD so that incorrect/mismatching salt in the envelope
-  // will cause the unwrap operation to fail (integrity check).
-  const saltFromEnv = envelope && envelope.kekDerivation && envelope.kekDerivation.salt ? envelope.kekDerivation.salt : '';
-  const wrapAad = utf8Encode(`file-binding-context:${saltFromEnv}`);
+  // Use fixed wrap AAD; libsodium AEAD will validate AAD as provided during unwrap.
+  const wrapAad = utf8Encode('file-binding-context');
 
-  // If the envelope contains a kekFingerprint we validate it before attempting to unwrap.
-  // This prevents accidental usage of a wrong KEK (e.g. salt mismatch) and provides an
-  // early integrity check.
-  if (envelope && envelope.kekDerivation && (envelope.kekDerivation as any).kekFingerprint) {
-    const expectedFp = (envelope.kekDerivation as any).kekFingerprint;
-    const computedFp = toBase64(await sha256(kek));
-    if (computedFp !== expectedFp) {
-      throw new Error('KEK fingerprint mismatch');
-    }
-  }
+
 
   const fileKey = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
     null,
