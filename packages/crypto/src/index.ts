@@ -22,7 +22,8 @@
  * The functions are written in portable TypeScript and avoid any runtime side-effects.
  */
 
-import localEncryption from './v0_local_encryption/localEncryption';
+/* localEncryption re-export removed to avoid circular import; Task 4 APIs are exposed
+   by importing the module directly where needed to keep package entrypoint stable. */
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -365,12 +366,6 @@ export default {
   utf8Encode,
   utf8Decode,
   cryptoGetRandomBytes,
-  // local encryption (Task 4) - re-export high-level APIs from the localEncryption module
-  buildUnlockMessageV1: localEncryption.buildUnlockMessageV1,
-  deriveKekFromSignature: localEncryption.deriveKekFromSignature,
-  generateFileKey: localEncryption.generateFileKey,
-  encryptFile: localEncryption.encryptFile,
-  decryptFile: localEncryption.decryptFile,
   // self-test
   runSelfTest,
 };
