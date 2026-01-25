@@ -382,22 +382,42 @@ export default function Home(): JSX.Element {
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <ConnectWallet />
-                <UnlockVaultButton />
-                <VerifyWallet />
-                <ProtectedAction />
-                <IdentityStatus />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+                {/* Step 1: Connect Wallet */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 28, height: 28, borderRadius: 14, background: '#0ea5e9', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    1
+                  </div>
+                  <ConnectWallet />
+                </div>
+
+                {/* Step 2: Proof-of-control (Sign to Verify) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 28, height: 28, borderRadius: 14, background: '#0ea5e9', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    2
+                  </div>
+                  {/* Ensure session refresh after successful verify via onVerified */}
+                  <VerifyWallet onVerified={() => { session.refresh() }} />
+                </div>
+
+                {/* Step 3: Unlock Vault (required to upload) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 28, height: 28, borderRadius: 14, background: '#0ea5e9', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    3
+                  </div>
+                  <UnlockVaultButton />
+                </div>
+
+                {/* Identity and messages on the far right */}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ProtectedAction />
+                  <IdentityStatus />
+                </div>
               </div>
         </div>
       </header>
 
-      {/* Floating Unlock Vault button to make the action impossible to miss */}
-      {typeof window !== 'undefined' ? (
-        <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 1200 }}>
-          <UnlockVaultButton />
-        </div>
-      ) : null}
+
 
       {/* Body layout */}
       <div style={styles.body}>
