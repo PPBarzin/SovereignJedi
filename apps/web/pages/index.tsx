@@ -132,6 +132,9 @@ export default function Home(): JSX.Element {
     setHydrated(true)
   }, [])
 
+  // Session integration (Task 3.5)
+  const session = useSession()
+
   // Wallet mock
   const [walletConnected, setWalletConnected] = useState(false)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
@@ -229,27 +232,26 @@ export default function Home(): JSX.Element {
     dragCounter.current = 0
     const f = e.dataTransfer?.files?.[0]
     if (f) {
-      // Gate uploads: ensure the user has a verified identity
-      const identity = loadIdentity()
-      if (!isVerified(identity)) {
+      // Gate uploads: require vault unlocked (SessionManager). Do NOT rely on Verified.
+      if (!session.isVaultUnlocked()) {
         setUiFlow('idle')
-        window.alert('Signature required — please verify your wallet.')
+        window.alert('Vault locked — unlock the vault to upload files.')
         return
       }
       handleFile(f)
     } else setUiFlow('idle')
-  }, [])
+  }, [session])
 
   const openPicker = useCallback(() => {
-    // Require a verified identity before allowing file selection (upload gating)
-    const identity = loadIdentity()
-    if (!isVerified(identity)) {
-      // Minimal UX feedback: block the picker and prompt the user to verify
-      window.alert('Signature required — please verify your wallet.')
+    // Require vault unlocked before allowing file selection (upload gating)
+    // Do NOT use Verified as a gate here.
+    if (!session.isVaultUnlocked()) {
+      // Minimal UX feedback: block the picker and prompt the user to unlock
+      window.alert('Vault locked — unlock the vault to select files.')
       return
     }
     fileInputRef.current?.click()
-  }, [])
+  }, [session])
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (f) handleFile(f)
@@ -258,12 +260,12 @@ export default function Home(): JSX.Element {
 
   // Simulate processing of a file drop / selection
   const handleFile = useCallback((file: File) => {
-    // Upload gating: require a verified identity before accepting files
-    const identity = loadIdentity()
-    if (!isVerified(identity)) {
+    // Upload gating: require vault unlocked before accepting files
+    // Do NOT use Verified as a gate here.
+    if (!session.isVaultUnlocked()) {
       setUiFlow('idle')
-      // Minimal UX: alert and block the action. Guides user to Verify flow.
-      window.alert('Signature required — please verify your wallet before uploading files.')
+      // Minimal UX: alert and block the action. Guides user to Unlock flow.
+      window.alert('Vault locked — unlock the vault before uploading files.')
       return
     }
 
@@ -301,7 +303,7 @@ export default function Home(): JSX.Element {
       // brief success state then back to idle
       window.setTimeout(() => setUiFlow('idle'), 1000)
     }, ms)
-  }, [])
+  }, [session])
 
   // Filtering logic
   const filtered = useMemo(() => {
