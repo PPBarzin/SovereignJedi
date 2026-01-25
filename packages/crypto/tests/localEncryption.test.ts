@@ -111,7 +111,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
     const walletId = 'test-wallet-01';
 
     // 1) prepare unlock: generates salt + canonical unlock message
-    const { salt, unlock } = sjcrypto.prepareUnlock({ wallet: walletId });
+    const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletId });
 
     // 2) sign the canonical message using libsodium (ed25519)
     const { sk, sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
@@ -202,7 +202,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
     const walletId = 'test-wallet-03';
 
     // Flow A
-    const { salt: saltA, unlock: unlockA } = sjcrypto.prepareUnlock({ wallet: walletId });
+    const { salt: saltA, unlock: unlockA } = await sjcrypto.prepareUnlock({ wallet: walletId });
     const { sigBytes: sigA } = await generateEd25519KeypairAndSign(unlockA.messageToSign);
     const kekA = await sjcrypto.deriveKekFromSignature(sigA, saltA);
     const resA = await sjcrypto.encryptFile(plaintext, { kek: kekA, salt: saltA, filename: 'r.txt' });
@@ -223,7 +223,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
 
   it('KEK derivation determinism: same signature+salt -> same KEK; different salt -> different KEK', async () => {
     const walletId = 'test-wallet-04';
-    const { salt } = sjcrypto.prepareUnlock({ wallet: walletId });
+    const { salt } = await sjcrypto.prepareUnlock({ wallet: walletId });
     const { unlock } = sjcrypto.prepareUnlock({ wallet: walletId, saltBytes: salt });
 
     // sign using libsodium
@@ -244,7 +244,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
     const issuedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
     const expiresAt = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30 minutes ago (expired)
     const walletId = 'test-wallet-05';
-    const unlock = sjcrypto.buildUnlockMessageV1({
+    const unlock = await sjcrypto.buildUnlockMessageV1({
       wallet: walletId,
       issuedAt,
       expiresAt,
