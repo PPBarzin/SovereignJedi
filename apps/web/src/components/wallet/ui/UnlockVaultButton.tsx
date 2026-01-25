@@ -63,6 +63,7 @@ export default function UnlockVaultButton(): JSX.Element | null {
     isWalletConnected,
     isVaultUnlocked,
     unlockVault,
+    walletPubKey,
     // other helpers available from hook if needed
   } = useSession()
 
@@ -94,8 +95,10 @@ export default function UnlockVaultButton(): JSX.Element | null {
     }
   }, [unlockVault])
 
-  // Button only visible when a wallet is connected (per spec)
-  if (!isWalletConnected) return null
+  // Button visible when a wallet pubkey exists (supports adapter-provided pubkey)
+  // We show the Unlock action if either the session reports a connected wallet
+  // or if a wallet pubkey is available from the provider.
+  if (!isWalletConnected && !walletPubKey) return null
 
   // If vault already unlocked, show disabled state
   if (isVaultUnlocked) {
