@@ -1,53 +1,78 @@
 /**
  * packages/crypto/tests/localEncryption.test.ts
  *
- * Tests for the local encryption pipeline (Task 4) — unit/integration style using real libsodium.
+ * Tests for the local encryption pipeline (Task 4).
  *
- * This test file:
- *  - exercises the prepareUnlock / buildUnlockMessageV1 → sign → deriveKekFromSignature → encryptFile → decryptFile flow
- *  - includes a small test helper that uses libsodium to generate an ed25519 keypair and sign the canonical SJ_UNLOCK_V1 message
+ * These tests import only the public entrypoint of the package (@sj/crypto) and
+ * rely on a deterministic local libsodium bundle placed under:
+ *   packages/crypto/test-assets/libsodium
+ *
+ * The test harness will attach that bundle to globalThis.sodium before tests run.
  *
  * Notes:
- *  - These tests require `libsodium-wrappers-sumo` to be available (installed as a dependency of the package).
- *  - The localEncryption implementation returns `fileKey` only in test environments (NODE_ENV === 'test').
+ * - libsodium-wrappers-sumo MUST be the version present in the repo and must be resolvable
+ *   (synchronized into packages/crypto/test-assets/libsodium by the sync script).
+ * - If libsodium cannot be loaded, tests fail hard (no shims).
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 let nacl: any;
-
-// Import the high-level crypto API from the package's src index.
-// The index re-exports the Task 4 functions (buildUnlockMessageV1, prepareUnlock, deriveKekFromSignature, encryptFile, decryptFile)
-import sjcrypto from '../src/v0_local_encryption/localEncryption';
+import * as sjcrypto from '@sj/crypto';
 
 const utf8Encode = (s: string) => new TextEncoder().encode(s);
 const utf8Decode = (b: Uint8Array) => new TextDecoder().decode(b);
 const toBase64 = (b: Uint8Array) => Buffer.from(b).toString('base64');
 const fromBase64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
 
+/**
+ * Load deterministic local libsodium bundle (copied to packages/crypto/test-assets/libsodium by sync script)
+ * and attach it to globalThis.sodium so the implementation (libsodium-only) can use it.
+ *
+ * Fails hard if the bundle cannot be loaded.
+ */
 beforeAll(async () => {
-  // Try to dynamically import libsodium-wrappers-sumo for Node test environment and expose it as globalThis.sodium
-  // so the strict libsodium-only getSodium() in the implementation can find it during tests.
   try {
-    const sodiumMod = await import('libsodium-wrappers-sumo');
-    const sodium = (sodiumMod && (sodiumMod as any).default) ? (sodiumMod as any).default : sodiumMod;
-    if (sodium && sodium.ready) await sodium.ready;
-    // Expose to global so package code that checks globalThis.sodium can reuse it in browser-like runtime
-    (globalThis as any).sodium = sodium;
-    // Log for clarity in test output
-    // eslint-disable-next-line no-console
-    console.log('libsodium-wrappers-sumo loaded and attached to globalThis.sodium for tests');
-  } catch (e) {
-    // libsodium may not be resolvable in some test environments; we intentionally do not swallow the error
-    // because the implementation enforces libsodium-only and should fail hard. Log a warning to aid debugging.
-    // eslint-disable-next-line no-console
-    console.warn('libsodium-wrappers-sumo not available in test environment:', (e as any)?.message ?? e);
-  }
+    // 1) Try to resolve the installed package dynamically (node_modules)
+    try {
+      const sodiumMod = await import('libsodium-wrappers-sumo');
+      const sodium = (sodiumMod && (sodiumMod as any).default) ? (sodiumMod as any).default : sodiumMod;
+      if (sodium && sodium.ready) await sodium.ready;
+      (globalThis as any).sodium = sodium;
+      console.log('libsodium-wrappers-sumo loaded from node_modules and attached to globalThis.sodium for tests');
+      return;
+    } catch (e) {
+      // continue to attempt local test-assets bundle
+      console.warn('libsodium-wrappers-sumo not resolvable from node_modules, will attempt local test-assets bundle.');
+    }
 
-  // Dynamically import tweetnacl at test runtime for signing helpers used in tests.
-  // Using tweetnacl here provides a compact, well-supported signing primitive for tests.
-  const mod = await import('tweetnacl');
-  nacl = (mod && (mod as any).default) ? (mod as any).default : mod;
-  // tweetnacl does not require async initialization (no .ready), so we can proceed immediately.
+    // 2) Attempt to load the deterministic copy in packages/crypto/test-assets/libsodium.
+    // This file should be created by the reproducible sync script.
+    const localBundlePath = require('path').join(process.cwd(), 'packages', 'crypto', 'test-assets', 'libsodium', 'libsodium-wrappers.js');
+    try {
+      // Use require to execute the bundle which should attach globalThis.sodium
+      // The bundle file is the distribution JS that sets up `sodium` on the global.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require(localBundlePath);
+      if ((globalThis as any).sodium && (globalThis as any).sodium.ready) {
+        await (globalThis as any).sodium.ready;
+        console.log('libsodium loaded from local test-assets and attached to globalThis.sodium for tests');
+        return;
+      } else {
+        throw new Error('local bundle did not expose globalThis.sodium');
+      }
+    } catch (errLocal) {
+      console.error('Failed to load local libsodium bundle at', localBundlePath, errLocal && errLocal.message ? errLocal.message : errLocal);
+      // Fail hard: no libsodium available for tests
+      throw new Error('libsodium-wrappers-sumo could not be loaded for tests (local test-assets bundle failed).');
+    }
+  } catch (finalErr) {
+    // Rethrow so test runner fails the suite
+    throw finalErr;
+  } finally {
+    // Ensure tweetnacl is available for signing helpers used by tests
+    const mod = await import('tweetnacl');
+    nacl = (mod && (mod as any).default) ? (mod as any).default : mod;
+  }
 });
 
 // Helper: generate an ed25519 keypair (libsodium) and sign a message string (utf-8)
@@ -115,7 +140,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
   it('tamper tests: modifying ciphertext/nonce/aad/wrap -> decryption fails', async () => {
     const plaintext = utf8Encode('tamper test content');
     const walletId = 'test-wallet-02';
-    const { salt, unlock } = sjcrypto.prepareUnlock({ wallet: walletId });
+    const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletId });
     const { sk, sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
     const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
 
@@ -127,6 +152,9 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
     });
 
     const { encryptedFile, envelope } = encResult;
+...
+    await expect(sjcrypto.decryptFile(encryptedFile, wrongEnvelope, kek)).rejects.toThrow();
+  });
 
     // 1) tamper ciphertext (flip one byte)
     const ct = fromBase64(encryptedFile.ciphertext);
