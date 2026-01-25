@@ -56,109 +56,100 @@ async function loadSodium(allowCdn: boolean, logRef: React.MutableRefObject<stri
     return g;
   }
 
-  // 2) Try dynamic import of libsodium-wrappers-sumo (local in node_modules),
-  //    then attempt a deterministic local public copy under /libsodium/ (served from apps/web/public/libsodium),
-  //    and only if explicitly allowed fall back to CDN.
-  appendLog(logRef, setLogs, "Attempting dynamic import('libsodium-wrappers-sumo') (local node_modules)...");
+  // 2) Prefer a deterministic local public copy under /libsodium/ (served from apps/web/public/libsodium).
+  //    We avoid dynamic import('libsodium-wrappers-sumo') at build-time to prevent bundler resolution issues.
+  //    Only if the local public copy is missing and CDN fallback is explicitly allowed will we attempt CDN.
+  appendLog(logRef, setLogs, "Attempting to load local static copy from /libsodium/ (apps/web/public/libsodium)...");
   try {
-    const mod = await import("libsodium-wrappers-sumo");
-    const sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
-    if (sodium && sodium.ready) await sodium.ready;
-    appendLog(logRef, setLogs, "Imported libsodium-wrappers-sumo and sodium.ready resolved (node_modules).");
-    return sodium;
-  } catch (err: any) {
-    appendLog(logRef, setLogs, `Dynamic import failed: ${(((err as any) && (err as any).message) || String(err))}`);
-    appendLog(logRef, setLogs, "Attempting to load local static copy from /libsodium/ (apps/web/public/libsodium)...");
-    // Try deterministic local public copy (placed in apps/web/public/libsodium by tooling)
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector('script[data-sj-libsodium-local="true"]');
-        if (existing) {
-          // wait for global sodium to appear
-          const waitForSodium = () => {
-            if ((window as any).sodium && (window as any).sodium.ready) {
-              (window as any).sodium.ready.then(() => resolve()).catch(reject);
-            } else {
-              setTimeout(waitForSodium, 50);
-            }
-          };
-          waitForSodium();
-          return;
-        }
-        const script = document.createElement("script");
-        // deterministic local path served by Next: /libsodium/libsodium-wrappers.js
-        script.src = "/libsodium/libsodium-wrappers.js";
-        script.async = true;
-        script.setAttribute("data-sj-libsodium-local", "true");
-        script.onload = () => {
+    await new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector('script[data-sj-libsodium-local="true"]');
+      if (existing) {
+        // wait for global sodium to appear
+        const waitForSodium = () => {
           if ((window as any).sodium && (window as any).sodium.ready) {
             (window as any).sodium.ready.then(() => resolve()).catch(reject);
           } else {
-            // small delay to allow attachment
-            setTimeout(() => {
-              if ((window as any).sodium && (window as any).sodium.ready) {
-                (window as any).sodium.ready.then(() => resolve()).catch(reject);
-              } else {
-                reject(new Error("Local libsodium loaded but window.sodium not found"));
-              }
-            }, 50);
+            setTimeout(waitForSodium, 50);
           }
         };
-        script.onerror = (e) => reject(new Error("Failed to load local libsodium script: " + String(e)));
-        document.head.appendChild(script);
-      });
-      const sodium = (window as any).sodium;
-      if (!sodium) throw new Error("Local libsodium loaded but window.sodium is missing");
-      if (sodium && sodium.ready) await sodium.ready;
-      appendLog(logRef, setLogs, "Loaded libsodium from local /libsodium/ and sodium.ready resolved.");
-      return sodium;
-    } catch (errLocal: any) {
-      appendLog(logRef, setLogs, `Local static load failed: ${(((errLocal as any) && (errLocal as any).message) || String(errLocal))}`);
-      // CDN fallback only when explicitly allowed by env var
-      if (ALLOW_CDN) {
-        appendLog(logRef, setLogs, "ALLOW_CDN enabled — attempting CDN fallback...");
-        try {
-          const existing = document.querySelector('script[data-sj-libsodium="true"]');
-          if (!existing) {
-            const script = document.createElement("script");
-            script.src = LIBSODIUM_CDN;
-            script.async = true;
-            script.setAttribute("data-sj-libsodium", "true");
-            script.onload = () => {
-              if ((window as any).sodium && (window as any).sodium.ready) {
-                (window as any).sodium.ready.then(() => {}).catch(() => {});
-              }
-            };
-            script.onerror = (e) => {
-              appendLog(logRef, setLogs, "CDN script failed to load: " + String(e));
-            };
-            document.head.appendChild(script);
-          }
-          // wait for window.sodium.ready
-          const start = Date.now();
-          const timeoutMs = 15000;
-          while (Date.now() - start < timeoutMs) {
-            if ((window as any).sodium && (window as any).sodium.ready) {
-              try {
-                await (window as any).sodium.ready;
-                appendLog(logRef, setLogs, "Loaded libsodium from CDN and sodium.ready resolved.");
-                return (window as any).sodium;
-              } catch (e) {
-                appendLog(logRef, setLogs, `sodium.ready rejected (CDN): ${(((e as any) && (e as any).message) || String(e))}`);
-                break;
-              }
-            }
-            // small delay
-            // eslint-disable-next-line no-await-in-loop
-            await new Promise((r) => setTimeout(r, 100));
-          }
-          appendLog(logRef, setLogs, "Timed out waiting for libsodium from CDN.");
-        } catch (errCdn: any) {
-          appendLog(logRef, setLogs, `CDN load attempt failed: ${(((errCdn as any) && (errCdn as any).message) || String(errCdn))}`);
-        }
-      } else {
-        appendLog(logRef, setLogs, "CDN fallback disabled (NEXT_PUBLIC_SMOKE_ALLOW_CDN!=1).");
+        waitForSodium();
+        return;
       }
+      const script = document.createElement("script");
+      // deterministic local path served by Next: /libsodium/libsodium-wrappers.js
+      // NOTE: the repo build step should copy the correct libsodium bundle (libsodium-wrappers.js) and related files
+      // into apps/web/public/libsodium so the browser can load it deterministically.
+      script.src = "/libsodium/libsodium-wrappers.js";
+      script.async = true;
+      script.setAttribute("data-sj-libsodium-local", "true");
+      script.onload = () => {
+        if ((window as any).sodium && (window as any).sodium.ready) {
+          (window as any).sodium.ready.then(() => resolve()).catch(reject);
+        } else {
+          // small delay to allow attachment
+          setTimeout(() => {
+            if ((window as any).sodium && (window as any).sodium.ready) {
+              (window as any).sodium.ready.then(() => resolve()).catch(reject);
+            } else {
+              reject(new Error("Local libsodium loaded but window.sodium not found"));
+            }
+          }, 50);
+        }
+      };
+      script.onerror = (e) => reject(new Error("Failed to load local libsodium script: " + String(e)));
+      document.head.appendChild(script);
+    });
+    const sodium = (window as any).sodium;
+    if (!sodium) throw new Error("Local libsodium loaded but window.sodium is missing");
+    if (sodium && sodium.ready) await sodium.ready;
+    appendLog(logRef, setLogs, "Loaded libsodium from local /libsodium/ and sodium.ready resolved.");
+    return sodium;
+  } catch (errLocal: any) {
+    appendLog(logRef, setLogs, `Local static load failed: ${(((errLocal as any) && (errLocal as any).message) || String(errLocal))}`);
+    // CDN fallback only when explicitly allowed by env var
+    if (ALLOW_CDN) {
+      appendLog(logRef, setLogs, "ALLOW_CDN enabled — attempting CDN fallback...");
+      try {
+        const existing = document.querySelector('script[data-sj-libsodium="true"]');
+        if (!existing) {
+          const script = document.createElement("script");
+          script.src = LIBSODIUM_CDN;
+          script.async = true;
+          script.setAttribute("data-sj-libsodium", "true");
+          script.onload = () => {
+            if ((window as any).sodium && (window as any).sodium.ready) {
+              (window as any).sodium.ready.then(() => {}).catch(() => {});
+            }
+          };
+          script.onerror = (e) => {
+            appendLog(logRef, setLogs, "CDN script failed to load: " + String(e));
+          };
+          document.head.appendChild(script);
+        }
+        // wait for window.sodium.ready
+        const start = Date.now();
+        const timeoutMs = 15000;
+        while (Date.now() - start < timeoutMs) {
+          if ((window as any).sodium && (window as any).sodium.ready) {
+            try {
+              await (window as any).sodium.ready;
+              appendLog(logRef, setLogs, "Loaded libsodium from CDN and sodium.ready resolved.");
+              return (window as any).sodium;
+            } catch (e) {
+              appendLog(logRef, setLogs, `sodium.ready rejected (CDN): ${(((e as any) && (e as any).message) || String(e))}`);
+              break;
+            }
+          }
+          // small delay
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        appendLog(logRef, setLogs, "Timed out waiting for libsodium from CDN.");
+      } catch (errCdn: any) {
+        appendLog(logRef, setLogs, `CDN load attempt failed: ${(((errCdn as any) && (errCdn as any).message) || String(errCdn))}`);
+      }
+    } else {
+      appendLog(logRef, setLogs, "CDN fallback disabled (NEXT_PUBLIC_SMOKE_ALLOW_CDN!=1).");
     }
   }
 
