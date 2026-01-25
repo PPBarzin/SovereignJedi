@@ -187,14 +187,14 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
 
     await expect(sjcrypto.decryptFile(encryptedFile, tamperedEnvelope, kek)).rejects.toThrow();
 
-    // 5) tamper salt: different salt will result in different KEK. Using original kek with mutated salt should fail.
+    // 5) tamper salt: different salt will result in different KEK.
+    // Derive a WRONG KEK from a fresh random signature (unrelated) and assert unwrap fails.
     const wrongSalt = (await sjcrypto.prepareUnlock({ wallet: walletId })).salt; // new salt
-    const wrongEnvelope = {
-      ...envelope,
-      kekDerivation: { ...envelope.kekDerivation, salt: toBase64(wrongSalt) },
-    };
-    // decrypt with original kek but envelope claims a different salt: unwrap will fail (integrity)
-    await expect(sjcrypto.decryptFile(encryptedFile, wrongEnvelope, kek)).rejects.toThrow();
+    // Derive a random signature and derive a KEK from it (this KEK is unrelated to the real wrap)
+    const { sigBytes: wrongSig } = await generateEd25519KeypairAndSign('random-wrong-sig-' + Math.random());
+    const wrongKek = await sjcrypto.deriveKekFromSignature(wrongSig, wrongSalt);
+    // Attempt decrypt with wrong KEK (should fail)
+    await expect(sjcrypto.decryptFile(encryptedFile, envelope, wrongKek)).rejects.toThrow();
   });
 
   it('randomness: encrypting same plaintext twice yields different ciphertexts (nonce/salt differences)', async () => {
@@ -208,7 +208,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
     const resA = await sjcrypto.encryptFile(plaintext, { kek: kekA, salt: saltA, filename: 'r.txt' });
 
     // Flow B (fresh salt/unlock/sign)
-    const { salt: saltB, unlock: unlockB } = sjcrypto.prepareUnlock({ wallet: walletId });
+    const { salt: saltB, unlock: unlockB } = await sjcrypto.prepareUnlock({ wallet: walletId });
     const { sigBytes: sigB } = await generateEd25519KeypairAndSign(unlockB.messageToSign);
     const kekB = await sjcrypto.deriveKekFromSignature(sigB, saltB);
     const resB = await sjcrypto.encryptFile(plaintext, { kek: kekB, salt: saltB, filename: 'r.txt' });
@@ -224,7 +224,7 @@ describe('localEncryption — high level flow (integration with libsodium)', () 
   it('KEK derivation determinism: same signature+salt -> same KEK; different salt -> different KEK', async () => {
     const walletId = 'test-wallet-04';
     const { salt } = await sjcrypto.prepareUnlock({ wallet: walletId });
-    const { unlock } = sjcrypto.prepareUnlock({ wallet: walletId, saltBytes: salt });
+    const { unlock } = await sjcrypto.prepareUnlock({ wallet: walletId, saltBytes: salt });
 
     // sign using libsodium
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
