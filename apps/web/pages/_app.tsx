@@ -55,25 +55,12 @@ export default function App({ Component, pageProps }: AppProps) {
     return [new PhantomWalletAdapter()]
   }, [])
 
-  // Client-only mount for the Crypto smoke helper.
-  // We dynamically import the client mount module so it is not included in SSR.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    // Dynamic import triggers the client-only mount helper which will attach the CryptoSmoke component
-    // to the placeholder DOM node with id "crypto-smoke-root".
-    import('../src/pages/_client_crypto_smoke').catch((err) => {
-      // Expose the error to console for debugging; do not throw during render.
-      console.error('Failed to mount client crypto smoke helper:', err);
-    });
-  }, []);
+
 
   return (
     <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect={false}>
         <WalletModalProvider>
-          {/* Placeholder container for client-only Crypto smoke UI.
-              The client mount helper dynamically imports and mounts the CryptoSmoke component into this node. */}
-          <div id="crypto-smoke-root" style={{ marginTop: 12 }} />
           <Component {...pageProps} />
         </WalletModalProvider>
       </WalletProvider>
