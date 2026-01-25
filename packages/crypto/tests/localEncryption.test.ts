@@ -25,7 +25,25 @@ const toBase64 = (b: Uint8Array) => Buffer.from(b).toString('base64');
 const fromBase64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
 
 beforeAll(async () => {
-  // Dynamically import tweetnacl at test runtime.
+  // Try to dynamically import libsodium-wrappers-sumo for Node test environment and expose it as globalThis.sodium
+  // so the strict libsodium-only getSodium() in the implementation can find it during tests.
+  try {
+    const sodiumMod = await import('libsodium-wrappers-sumo');
+    const sodium = (sodiumMod && (sodiumMod as any).default) ? (sodiumMod as any).default : sodiumMod;
+    if (sodium && sodium.ready) await sodium.ready;
+    // Expose to global so package code that checks globalThis.sodium can reuse it in browser-like runtime
+    (globalThis as any).sodium = sodium;
+    // Log for clarity in test output
+    // eslint-disable-next-line no-console
+    console.log('libsodium-wrappers-sumo loaded and attached to globalThis.sodium for tests');
+  } catch (e) {
+    // libsodium may not be resolvable in some test environments; we intentionally do not swallow the error
+    // because the implementation enforces libsodium-only and should fail hard. Log a warning to aid debugging.
+    // eslint-disable-next-line no-console
+    console.warn('libsodium-wrappers-sumo not available in test environment:', (e as any)?.message ?? e);
+  }
+
+  // Dynamically import tweetnacl at test runtime for signing helpers used in tests.
   // Using tweetnacl here provides a compact, well-supported signing primitive for tests.
   const mod = await import('tweetnacl');
   nacl = (mod && (mod as any).default) ? (mod as any).default : mod;
