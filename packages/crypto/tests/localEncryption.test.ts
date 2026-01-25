@@ -46,25 +46,28 @@ beforeAll(async () => {
     }
 
     // 2) Attempt to load the deterministic copy in packages/crypto/test-assets/libsodium.
-    // This file should be created by the reproducible sync script.
-    const localBundlePath = require('path').join(__dirname, '..', 'test-assets', 'libsodium', 'libsodium-wrappers.js');
-    try {
-      // Use require to execute the bundle which should attach globalThis.sodium
-      // The bundle file is the distribution JS that sets up `sodium` on the global.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      require(localBundlePath);
-      if ((globalThis as any).sodium && (globalThis as any).sodium.ready) {
-        await (globalThis as any).sodium.ready;
-        console.log('libsodium loaded from local test-assets and attached to globalThis.sodium for tests');
-        return;
-      } else {
-        throw new Error('local bundle did not expose globalThis.sodium');
+      // This file should be created by the reproducible sync script.
+      const localBundlePath = require('path').join(__dirname, '..', 'test-assets', 'libsodium', 'libsodium-wrappers.js');
+      try {
+        // Use a file:// dynamic import of the local bundle so it executes in ESM context
+        // and attaches `sodium` to globalThis as the distribution expects.
+        const { pathToFileURL } = require('url');
+        const fileUrl = pathToFileURL(localBundlePath).href;
+        const modLocal = await import(fileUrl);
+        const sodiumLocal = (modLocal && (modLocal as any).default) ? (modLocal as any).default : modLocal;
+        if (sodiumLocal && sodiumLocal.ready) {
+          await sodiumLocal.ready;
+          (globalThis as any).sodium = sodiumLocal;
+          console.log('libsodium loaded from local test-assets (file URL import) and attached to globalThis.sodium for tests');
+          return;
+        } else {
+          throw new Error('local bundle did not expose globalThis.sodium');
+        }
+      } catch (errLocal) {
+        console.error('Failed to load local libsodium bundle at', localBundlePath, errLocal && errLocal.message ? errLocal.message : errLocal);
+        // Fail hard: no libsodium available for tests
+        throw new Error('libsodium-wrappers-sumo could not be loaded for tests (local test-assets bundle failed).');
       }
-    } catch (errLocal) {
-      console.error('Failed to load local libsodium bundle at', localBundlePath, errLocal && errLocal.message ? errLocal.message : errLocal);
-      // Fail hard: no libsodium available for tests
-      throw new Error('libsodium-wrappers-sumo could not be loaded for tests (local test-assets bundle failed).');
-    }
   } catch (finalErr) {
     // Rethrow so test runner fails the suite
     throw finalErr;
