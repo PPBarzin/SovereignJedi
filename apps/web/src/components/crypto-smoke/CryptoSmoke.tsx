@@ -36,15 +36,66 @@ export default function CryptoSmoke(): JSX.Element {
     setLogs("");
 
     try {
-      appendLog("Starting Crypto smoke test — dynamic import libsodium-wrappers-sumo");
+      appendLog("Starting Crypto smoke test — load libsodium-wrappers-sumo from CDN or use global sodium if present");
 
-      // Dynamic import — required by the Task 4 constraints
-      const mod = await import("libsodium-wrappers-sumo");
-      const sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
+      // Try to reuse a global sodium if already loaded (e.g. by the page or a runtime loader)
+      let sodium: any = (window as any).sodium ?? null;
+      if (sodium) {
+        appendLog("Found global sodium, awaiting sodium.ready...");
+        if (sodium && sodium.ready) await sodium.ready;
+        appendLog("libsodium ready (global).");
+      } else {
+        // Load libsodium-wrappers-sumo via a CDN script at runtime to avoid build-time resolution issues.
+        appendLog("Global sodium not found — loading libsodium-wrappers-sumo from CDN...");
+        await new Promise<void>((resolve, reject) => {
+          const existing = document.querySelector('script[data-sj-libsodium="true"]');
+          if (existing) {
+            // Another load attempt is in progress; wait for global sodium to appear
+            const waitForSodium = () => {
+              if ((window as any).sodium && (window as any).sodium.ready) {
+                (window as any).sodium.ready.then(() => resolve()).catch(reject);
+              } else {
+                setTimeout(waitForSodium, 50);
+              }
+            };
+            waitForSodium();
+            return;
+          }
 
-      appendLog("Imported libsodium module, awaiting sodium.ready...");
-      await sodium.ready;
-      appendLog("libsodium ready.");
+          const script = document.createElement("script");
+          // Pin to the exact version we use in the project to avoid mismatch
+          script.src = "https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.7.16/dist/modules-sumo/libsodium-wrappers.js";
+          script.async = true;
+          script.setAttribute("data-sj-libsodium", "true");
+          script.onload = () => {
+            // libsodium-wrappers-sumo should expose `sodium` on window
+            if ((window as any).sodium && (window as any).sodium.ready) {
+              (window as any).sodium.ready.then(() => resolve()).catch(reject);
+            } else {
+              // Small delay to allow the lib to attach global
+              setTimeout(() => {
+                if ((window as any).sodium && (window as any).sodium.ready) {
+                  (window as any).sodium.ready.then(() => resolve()).catch(reject);
+                } else {
+                  reject(new Error("libsodium loaded but global `sodium` not found"));
+                }
+              }, 50);
+            }
+          };
+          script.onerror = (e) => {
+            reject(new Error("Failed to load libsodium-wrappers-sumo from CDN: " + String(e)));
+          };
+          document.head.appendChild(script);
+        });
+
+        // After load, ensure global sodium is present and ready
+        sodium = (window as any).sodium;
+        if (!sodium) {
+          throw new Error("libsodium loaded but global `sodium` not found. Ensure the CDN delivered the expected bundle.");
+        }
+        if (sodium && sodium.ready) await sodium.ready;
+        appendLog("libsodium ready (CDN).");
+      }
 
       // 1) generate 1KB plaintext
       const PLAINTEXT_LEN = 1024;
