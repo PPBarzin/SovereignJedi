@@ -161,8 +161,16 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
     }
 
     const handleDisconnect = () => {
+      // Clear persisted identity and last provider
       clearIdentity()
       clearLastWalletProvider()
+      // Ensure session-level disconnect: revoke vault access and clear session state,
+      // but do not attempt to reconnect the wallet here.
+      try {
+        disconnectWallet()
+      } catch {
+        // ignore session disconnect errors
+      }
       setPublicKeyStr(null)
     }
 
