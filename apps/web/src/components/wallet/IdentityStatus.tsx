@@ -146,13 +146,27 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
 
   const clear = useCallback(() => {
     try {
+      // Remove the persisted identity (proof-of-control)
       clearIdentity()
       setIdentity(null)
+
+      // IMPORTANT: Per product rule, losing the persisted identity should also
+      // revoke access to the Vault for the current session. We must NOT
+      // disconnect the wallet — only lock the vault in-memory so uploads and
+      // other protected actions are prevented until an explicit Unlock occurs.
+      try {
+        session.lockVault()
+        // refresh UI state to reflect the locked vault immediately
+        session.refresh()
+      } catch {
+        // ignore any session errors — the UI will reflect the locked state when possible
+      }
+
       if (typeof onCleared === 'function') onCleared()
     } catch {
       // ignore
     }
-  }, [onCleared])
+  }, [onCleared, session])
 
   // Small helpers for display
   const statusBadge = useMemo(() => {
@@ -181,6 +195,7 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
                 Vault: {session?.isVaultUnlocked ? 'Unlocked' : 'Locked'}
               </div>
             </div>
+          </div>
 
           {identity && identity.publicKey ? (
             <div style={identityRow}>
