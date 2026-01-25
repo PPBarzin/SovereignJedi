@@ -85,6 +85,14 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
     // prefer adapter publicKey, fallback to window.solana
     if (addressFromAdapter) {
       setPublicKeyStr(addressFromAdapter)
+      // Ensure SessionManager is aware of the adapter-provided pubkey so the Unlock
+      // button appears immediately without requiring a reload.
+      try {
+        // fire-and-forget registration; if it fails, unlock will still fail gracefully
+        void connectWallet(addressFromAdapter, 'phantom')
+      } catch {
+        /* ignore */
+      }
       return
     }
     if (typeof window === 'undefined') {
@@ -96,13 +104,20 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
       try {
         const pk = new PublicKey(sol.publicKey).toBase58()
         setPublicKeyStr(pk)
+        // Register the detected pubkey with SessionManager so the UI (Unlock button)
+        // updates immediately and doesn't require a manual reload.
+        try {
+          void connectWallet(pk, 'phantom')
+        } catch {
+          // ignore registration failures; fallback behavior will surface errors to user
+        }
       } catch {
         setPublicKeyStr(null)
       }
     } else {
       setPublicKeyStr(null)
     }
-  }, [addressFromAdapter])
+  }, [addressFromAdapter, connectWallet])
 
   // Listen to Phantom provider events (account change / connect / disconnect)
   useEffect(() => {
