@@ -14,6 +14,7 @@ import {
   getLastWalletProvider,
   STORAGE_KEY_IDENTITY,
 } from './types'
+import useSession from '../../lib/session/useSession'
 
 /**
  * IdentityStatus
@@ -62,6 +63,9 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
       return null
     }
   }, [])
+
+  // Session state (VaultUnlocked) — used only for UI status display (non-sensitive)
+  const session = useSession()
 
   // Use theme tokens (dark by default here). In a follow-up we can wire this to a global theme switch.
   const t = getTokens('dark')
@@ -142,13 +146,27 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
 
   const clear = useCallback(() => {
     try {
+      // Remove the persisted identity (proof-of-control)
       clearIdentity()
       setIdentity(null)
+
+      // IMPORTANT: Per product rule, losing the persisted identity should also
+      // revoke access to the Vault for the current session. We must NOT
+      // disconnect the wallet — only lock the vault in-memory so uploads and
+      // other protected actions are prevented until an explicit Unlock occurs.
+      try {
+        session.lockVault()
+        // refresh UI state to reflect the locked vault immediately
+        session.refresh()
+      } catch {
+        // ignore any session errors — the UI will reflect the locked state when possible
+      }
+
       if (typeof onCleared === 'function') onCleared()
     } catch {
       // ignore
     }
-  }, [onCleared])
+  }, [onCleared, session])
 
   // Small helpers for display
   const statusBadge = useMemo(() => {
@@ -169,9 +187,14 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
         <div style={left}>
           <div style={title}>Identity</div>
           <div style={sub}>
-            Status:{' '}
-            <span style={{ color: statusBadge.color, fontWeight: 700 }}>{statusBadge.text}</span>
-            {lastProvider ? <span style={providerNote}> • {lastProvider}</span> : null}
+            <div style={{ ...sub }}>
+              Identity:{' '}
+              <span style={{ color: statusBadge.color, fontWeight: 700 }}>{statusBadge.text}</span>
+              {lastProvider ? <span style={providerNote}> • {lastProvider}</span> : null}
+              <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
+                Vault: {session?.isVaultUnlocked ? 'Unlocked' : 'Locked'}
+              </div>
+            </div>
           </div>
 
           {identity && identity.publicKey ? (

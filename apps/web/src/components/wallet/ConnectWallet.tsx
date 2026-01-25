@@ -5,6 +5,7 @@ import type { FC } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
+import useSession from '../../lib/session/useSession'
 
  // ProgDec moved to docs/progdec/T03-D001-wallet-ui.md — remove inline decision notes.
  // See docs/progdec/T03-D001-wallet-ui.md for rationale and traceability.
@@ -54,6 +55,7 @@ type Props = {
  */
 export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
   const wallet = useWallet() // may be a noop if not under WalletProvider
+  const { connectWallet, disconnectWallet } = useSession()
   const [hasPhantom, setHasPhantom] = useState<boolean>(false)
   const [publicKeyStr, setPublicKeyStr] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
@@ -83,6 +85,14 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
     // prefer adapter publicKey, fallback to window.solana
     if (addressFromAdapter) {
       setPublicKeyStr(addressFromAdapter)
+      // Ensure SessionManager is aware of the adapter-provided pubkey so the Unlock
+      // button appears immediately without requiring a reload.
+      try {
+        // fire-and-forget registration; if it fails, unlock will still fail gracefully
+        void connectWallet(addressFromAdapter, 'phantom')
+      } catch {
+        /* ignore */
+      }
       return
     }
     if (typeof window === 'undefined') {
@@ -94,81 +104,28 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
       try {
         const pk = new PublicKey(sol.publicKey).toBase58()
         setPublicKeyStr(pk)
+        // Register the detected pubkey with SessionManager so the UI (Unlock button)
+        // updates immediately and doesn't require a manual reload.
+        try {
+          void connectWallet(pk, 'phantom')
+        } catch {
+          // ignore registration failures; fallback behavior will surface errors to user
+        }
       } catch {
         setPublicKeyStr(null)
       }
     } else {
       setPublicKeyStr(null)
     }
-  }, [addressFromAdapter])
+  }, [addressFromAdapter, connectWallet])
 
-  // Listen to Phantom provider events (account change / connect / disconnect)
+  // Provider event handling has been centralized in the session layer (useSession)
+  // to avoid duplicate listeners and race conditions. ConnectWallet remains a UI
+  // controller and no longer attaches provider event listeners.
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const sol = (window as any).solana
-    if (!sol || !sol.isPhantom) return
-
-    const handleAccountChanged = (newPubKey: any) => {
-      // if null => disconnected
-      if (!newPubKey) {
-        // clear persisted identity and last provider
-        clearIdentity()
-        clearLastWalletProvider()
-        setPublicKeyStr(null)
-        return
-      }
-      try {
-        const pk = new PublicKey(newPubKey).toBase58()
-        // Always clear identity on account change to comply with Task 3 no hot-switch
-        clearIdentity()
-        // Persist last provider remains unchanged here; UI will prompt reconnect/verify.
-        setPublicKeyStr(pk)
-      } catch {
-        // ignore
-      }
-    }
-
-    const handleConnect = (info: any) => {
-      // Phantom may call connect with a publicKey
-      if (info && info.publicKey) {
-        try {
-          const pk = new PublicKey(info.publicKey).toBase58()
-          setPublicKeyStr(pk)
-          setLastProviderIfPhantom()
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    const handleDisconnect = () => {
-      clearIdentity()
-      clearLastWalletProvider()
-      setPublicKeyStr(null)
-    }
-
-    // Subscribe if the provider exposes event API
-    if (sol.on) {
-      try {
-        sol.on('accountChanged', handleAccountChanged)
-        sol.on('connect', handleConnect)
-        sol.on('disconnect', handleDisconnect)
-      } catch {
-        // ignore if provider doesn't support events
-      }
-    }
-
-    return () => {
-      try {
-        if (sol.removeListener) {
-          sol.removeListener('accountChanged', handleAccountChanged)
-          sol.removeListener('connect', handleConnect)
-          sol.removeListener('disconnect', handleDisconnect)
-        }
-      } catch {
-        // ignore
-      }
-    }
+    // Intentionally no-op: session hook installs provider listeners.
+    // This keeps ConnectWallet focused on UI responsibilities only.
+    return () => {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -189,6 +146,19 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
       if (wallet && wallet.connect && !wallet.connected) {
         await wallet.connect()
         // wallet.connect() should populate wallet.publicKey and connected flag
+        try {
+          const pk = wallet && (wallet as any).publicKey ? (wallet as any).publicKey.toBase58() : null
+          if (pk) {
+            // Register the connected pubkey with SessionManager (no unlock)
+            try {
+              await connectWallet(pk, 'phantom')
+            } catch {
+              // ignore
+            }
+          }
+        } catch {
+          // ignore
+        }
         setLastProviderIfPhantom()
         return
       }
@@ -208,6 +178,12 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
             const pk = new PublicKey(res.publicKey).toBase58()
             setPublicKeyStr(pk)
             setLastProviderIfPhantom()
+            try {
+              // Register with SessionManager (no unlock)
+              await connectWallet(pk, 'phantom')
+            } catch {
+              // ignore
+            }
           } catch {
             // ignore
           }
@@ -246,12 +222,18 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
       // ignore minor disconnect errors but surface if relevant
       setError(err?.message ?? String(err))
     } finally {
+      // Ensure SessionManager clears in-memory vault and pubkey state
+      try {
+        disconnectWallet()
+      } catch {
+        // ignore
+      }
       // Clear identity and last provider per spec (no secrets persisted)
       clearIdentity()
       clearLastWalletProvider()
       setPublicKeyStr(null)
     }
-  }, [wallet])
+  }, [wallet, disconnectWallet])
 
   const copyAddress = useCallback(async () => {
     if (!publicKeyStr) return

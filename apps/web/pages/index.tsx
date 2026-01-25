@@ -5,7 +5,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ConnectWallet from '../src/components/wallet/ConnectWallet'
 import VerifyWallet from '../src/components/wallet/VerifyWallet'
 import IdentityStatus from '../src/components/wallet/IdentityStatus'
+import UnlockVaultButton from '../src/components/wallet/ui/UnlockVaultButton'
+import ProtectedAction from '../src/components/wallet/ui/ProtectedAction'
+import useSession from '../src/lib/session/useSession'
 import { loadIdentity, isVerified } from '../src/components/wallet/types'
+import { canPerformVaultActions } from '../src/lib/session/vaultGuards'
 
 /**
  * Task 2.5 — UI Mock (Product-like)
@@ -130,6 +134,9 @@ export default function Home(): JSX.Element {
     setHydrated(true)
   }, [])
 
+  // Session integration (Task 3.5)
+  const session = useSession()
+
   // Wallet mock
   const [walletConnected, setWalletConnected] = useState(false)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
@@ -227,27 +234,26 @@ export default function Home(): JSX.Element {
     dragCounter.current = 0
     const f = e.dataTransfer?.files?.[0]
     if (f) {
-      // Gate uploads: ensure the user has a verified identity
-      const identity = loadIdentity()
-      if (!isVerified(identity)) {
+      // Gate uploads: require both IdentityVerified AND VaultUnlocked
+      if (!canPerformVaultActions()) {
         setUiFlow('idle')
-        window.alert('Signature required — please verify your wallet.')
+        // Give actionable guidance to the user
+        window.alert('Upload denied — you must both (1) Verify identity (Sign to Verify) and (2) Unlock Vault (Unlock Vault) before uploading.')
         return
       }
       handleFile(f)
     } else setUiFlow('idle')
-  }, [])
+  }, [session])
 
   const openPicker = useCallback(() => {
-    // Require a verified identity before allowing file selection (upload gating)
-    const identity = loadIdentity()
-    if (!isVerified(identity)) {
-      // Minimal UX feedback: block the picker and prompt the user to verify
-      window.alert('Signature required — please verify your wallet.')
+    // Require both IdentityVerified and VaultUnlocked before allowing file selection
+    if (!canPerformVaultActions()) {
+      // Minimal UX feedback: block the picker and prompt the user
+      window.alert('Selection denied — Verify identity and Unlock Vault before selecting files.')
       return
     }
     fileInputRef.current?.click()
-  }, [])
+  }, [session])
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (f) handleFile(f)
@@ -256,12 +262,11 @@ export default function Home(): JSX.Element {
 
   // Simulate processing of a file drop / selection
   const handleFile = useCallback((file: File) => {
-    // Upload gating: require a verified identity before accepting files
-    const identity = loadIdentity()
-    if (!isVerified(identity)) {
+    // Upload gating: require both IdentityVerified and VaultUnlocked before accepting files
+    if (!canPerformVaultActions()) {
       setUiFlow('idle')
-      // Minimal UX: alert and block the action. Guides user to Verify flow.
-      window.alert('Signature required — please verify your wallet before uploading files.')
+      // Minimal UX: alert and block the action. Guides user to both Verify and Unlock flows.
+      window.alert('Upload denied — Verify identity and Unlock Vault before uploading files.')
       return
     }
 
@@ -299,7 +304,7 @@ export default function Home(): JSX.Element {
       // brief success state then back to idle
       window.setTimeout(() => setUiFlow('idle'), 1000)
     }, ms)
-  }, [])
+  }, [session])
 
   // Filtering logic
   const filtered = useMemo(() => {
@@ -377,13 +382,42 @@ export default function Home(): JSX.Element {
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <ConnectWallet />
-                <VerifyWallet />
-                <IdentityStatus />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+                {/* Step 1: Connect Wallet */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 28, height: 28, borderRadius: 14, background: '#0ea5e9', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    1
+                  </div>
+                  <ConnectWallet />
+                </div>
+
+                {/* Step 2: Proof-of-control (Sign to Verify) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 28, height: 28, borderRadius: 14, background: '#0ea5e9', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    2
+                  </div>
+                  {/* Ensure session refresh after successful verify via onVerified */}
+                  <VerifyWallet onVerified={() => { session.refresh() }} />
+                </div>
+
+                {/* Step 3: Unlock Vault (required to upload) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 28, height: 28, borderRadius: 14, background: '#0ea5e9', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    3
+                  </div>
+                  <UnlockVaultButton />
+                </div>
+
+                {/* Identity and messages on the far right */}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ProtectedAction />
+                  <IdentityStatus />
+                </div>
               </div>
         </div>
       </header>
+
+
 
       {/* Body layout */}
       <div style={styles.body}>
