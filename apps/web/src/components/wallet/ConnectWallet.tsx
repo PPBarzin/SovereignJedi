@@ -119,83 +119,13 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
     }
   }, [addressFromAdapter, connectWallet])
 
-  // Listen to Phantom provider events (account change / connect / disconnect)
+  // Provider event handling has been centralized in the session layer (useSession)
+  // to avoid duplicate listeners and race conditions. ConnectWallet remains a UI
+  // controller and no longer attaches provider event listeners.
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const sol = (window as any).solana
-    if (!sol || !sol.isPhantom) return
-
-    const handleAccountChanged = (newPubKey: any) => {
-      // NO HOT-SWITCH: treat any account change as a session disconnect.
-      // Clear persisted identity and last provider, disconnect the SessionManager,
-      // and force the UI into disconnected state so user must reconnect explicitly.
-      clearIdentity()
-      clearLastWalletProvider()
-      try {
-        // disconnectWallet comes from useSession() hook above
-        disconnectWallet()
-      } catch {
-        // ignore
-      }
-      setPublicKeyStr(null)
-    }
-
-    const handleConnect = (info: any) => {
-      // Phantom may call connect with a publicKey
-      if (info && info.publicKey) {
-        try {
-          const pk = new PublicKey(info.publicKey).toBase58()
-          setPublicKeyStr(pk)
-          setLastProviderIfPhantom()
-          // Register the connected pubkey with SessionManager (do NOT unlock)
-          try {
-            // connectWallet from useSession; fire-and-forget
-            void connectWallet(pk, 'phantom')
-          } catch {
-            // ignore connect errors
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    const handleDisconnect = () => {
-      // Clear persisted identity and last provider
-      clearIdentity()
-      clearLastWalletProvider()
-      // Ensure session-level disconnect: revoke vault access and clear session state,
-      // but do not attempt to reconnect the wallet here.
-      try {
-        disconnectWallet()
-      } catch {
-        // ignore session disconnect errors
-      }
-      setPublicKeyStr(null)
-    }
-
-    // Subscribe if the provider exposes event API
-    if (sol.on) {
-      try {
-        sol.on('accountChanged', handleAccountChanged)
-        sol.on('connect', handleConnect)
-        sol.on('disconnect', handleDisconnect)
-      } catch {
-        // ignore if provider doesn't support events
-      }
-    }
-
-    return () => {
-      try {
-        if (sol.removeListener) {
-          sol.removeListener('accountChanged', handleAccountChanged)
-          sol.removeListener('connect', handleConnect)
-          sol.removeListener('disconnect', handleDisconnect)
-        }
-      } catch {
-        // ignore
-      }
-    }
+    // Intentionally no-op: session hook installs provider listeners.
+    // This keeps ConnectWallet focused on UI responsibilities only.
+    return () => {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
