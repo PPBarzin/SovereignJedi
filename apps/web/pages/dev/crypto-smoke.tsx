@@ -96,7 +96,7 @@ async function loadSodium(allowCdn: boolean, logRef: React.MutableRefObject<stri
           appendLog(logRef, setLogs, "Loaded libsodium from CDN and sodium.ready resolved.");
           return (window as any).sodium;
         } catch (err) {
-          appendLog(logRef, setLogs, `sodium.ready rejected: ${(err && err.message) || String(err)}`);
+          appendLog(logRef, setLogs, `sodium.ready rejected: ${(((err as any) && (err as any).message) || String(err))}`);
           break;
         }
       }
