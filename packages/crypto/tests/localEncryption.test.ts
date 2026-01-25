@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import * as sodium from 'libsodium-wrappers-sumo';
+let sodium: any;
 
 // Import the high-level crypto API from the package's src index.
 // The index re-exports the Task 4 functions (buildUnlockMessageV1, prepareUnlock, deriveKekFromSignature, encryptFile, decryptFile)
@@ -25,8 +25,13 @@ const toBase64 = (b: Uint8Array) => Buffer.from(b).toString('base64');
 const fromBase64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
 
 beforeAll(async () => {
-  // Ensure libsodium is ready before running tests
-  await sodium.ready;
+  // Dynamically import libsodium-wrappers-sumo at test runtime and await initialization.
+  // This avoids static ESM import resolution issues in the test runner environment.
+  const mod = await import('libsodium-wrappers-sumo');
+  sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
+  if (sodium && sodium.ready) {
+    await sodium.ready;
+  }
 });
 
 // Helper: generate an ed25519 keypair (libsodium) and sign a message string (utf-8)
