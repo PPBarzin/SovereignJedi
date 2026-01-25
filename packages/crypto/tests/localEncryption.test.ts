@@ -8,12 +8,12 @@
  *  - includes a small test helper that uses libsodium to generate an ed25519 keypair and sign the canonical SJ_UNLOCK_V1 message
  *
  * Notes:
- *  - These tests require `libsodium-wrappers` to be available (installed as a dependency of the package).
+ *  - These tests require `libsodium-wrappers-sumo` to be available (installed as a dependency of the package).
  *  - The localEncryption implementation returns `fileKey` only in test environments (NODE_ENV === 'test').
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import * as sodium from 'libsodium-wrappers';
+import * as sodium from 'libsodium-wrappers-sumo';
 
 // Import the high-level crypto API from the package's src index.
 // The index re-exports the Task 4 functions (buildUnlockMessageV1, prepareUnlock, deriveKekFromSignature, encryptFile, decryptFile)

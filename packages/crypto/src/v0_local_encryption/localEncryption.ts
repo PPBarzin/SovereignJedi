@@ -207,7 +207,7 @@ async function getSodium(): Promise<any | null> {
       return g;
     }
 
-    const mod = await import('libsodium-wrappers');
+    const mod = await import('libsodium-wrappers-sumo');
     const sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
     if (sodium && sodium.ready) {
       await sodium.ready;
