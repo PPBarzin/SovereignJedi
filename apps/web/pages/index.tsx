@@ -384,13 +384,20 @@ export default function Home(): JSX.Element {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <ConnectWallet />
-                <VerifyWallet />
                 <UnlockVaultButton />
+                <VerifyWallet />
                 <ProtectedAction />
                 <IdentityStatus />
               </div>
         </div>
       </header>
+
+      {/* Floating Unlock Vault button to make the action impossible to miss */}
+      {typeof window !== 'undefined' ? (
+        <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 1200 }}>
+          <UnlockVaultButton />
+        </div>
+      ) : null}
 
       {/* Body layout */}
       <div style={styles.body}>
