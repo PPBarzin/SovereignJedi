@@ -28,6 +28,13 @@ const ALLOW_CDN = process.env.NEXT_PUBLIC_SMOKE_ALLOW_CDN === "1";
 const LIBSODIUM_CDN =
   "https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.7.16/dist/modules-sumo/libsodium-wrappers.js";
 
+// Local (no CDN) UMD bundles served from /public.
+// IMPORTANT: in a browser <script> context, libsodium-wrappers.js expects to resolve `libsodium-sumo`
+// via AMD/CommonJS. To make local load deterministic, we explicitly inject the `libsodium-sumo.js`
+// UMD bundle FIRST, then inject `libsodium-wrappers.js` so it can attach `window.sodium`.
+const LIBSODIUM_LOCAL_SUMO_JS = "/libsodium/libsodium-sumo.js";
+const LIBSODIUM_LOCAL_WRAPPERS_JS = "/libsodium/libsodium-wrappers.js";
+
 function appendLog(ref: React.MutableRefObject<string>, setter: (s: string) => void, line: string) {
   const ts = new Date().toISOString();
   ref.current = `${ref.current}[${ts}] ${line}\n${ref.current}`;
@@ -47,65 +54,97 @@ function equalUint8(a?: Uint8Array | null, b?: Uint8Array | null): boolean {
  * If neither works, throw a descriptive error (fail hard).
  */
 async function loadSodium(allowCdn: boolean, logRef: React.MutableRefObject<string>, setLogs: (s: string) => void) {
+  const getWinSodium = () => (window as any).sodium;
+
+  // Diagnostics: presence at entry
+  appendLog(logRef, setLogs, `window.sodium present: ${getWinSodium() ? "YES" : "NO"}`);
+
   // 1) If a global sodium already exists, reuse it
-  if (typeof (window as any).sodium !== "undefined") {
-    const g = (window as any).sodium;
+  if (typeof getWinSodium() !== "undefined" && getWinSodium()) {
+    const g = getWinSodium();
     appendLog(logRef, setLogs, "Found global window.sodium — awaiting ready...");
-    if (g && g.ready) await g.ready;
-    appendLog(logRef, setLogs, "window.sodium ready");
+    if (g && g.ready) {
+      await g.ready;
+      appendLog(logRef, setLogs, "ready awaited: YES (global)");
+    } else {
+      appendLog(logRef, setLogs, "ready awaited: NO (global had no ready)");
+    }
+    appendLog(logRef, setLogs, "window.sodium ready (global)");
+    (globalThis as any).sodium = g;
     return g;
   }
 
-  // 2) Prefer a deterministic local public copy under /libsodium/ (served from apps/web/public/libsodium).
-  //    We avoid dynamic import('libsodium-wrappers-sumo') at build-time to prevent bundler resolution issues.
-  //    Only if the local public copy is missing and CDN fallback is explicitly allowed will we attempt CDN.
-  appendLog(logRef, setLogs, "Attempting to load local static copy from /libsodium/ (apps/web/public/libsodium)...");
-  try {
+  // 2) Local load MUST succeed without CDN for OQ-07:
+  //    We inject libsodium-sumo.js FIRST, then libsodium-wrappers.js (both from /public),
+  //    then we wait for window.sodium.ready to resolve.
+  appendLog(logRef, setLogs, `Attempting to load local libsodium UMD bundle (sumo): ${LIBSODIUM_LOCAL_SUMO_JS}`);
+  appendLog(logRef, setLogs, `Attempting to load local libsodium UMD bundle (wrappers): ${LIBSODIUM_LOCAL_WRAPPERS_JS}`);
+
+  async function injectScriptOnce(opts: { src: string; attr: string }) {
     await new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector('script[data-sj-libsodium-local="true"]');
-      if (existing) {
-        // wait for global sodium to appear
-        const waitForSodium = () => {
-          if ((window as any).sodium && (window as any).sodium.ready) {
-            (window as any).sodium.ready.then(() => resolve()).catch(reject);
-          } else {
-            setTimeout(waitForSodium, 50);
-          }
-        };
-        waitForSodium();
-        return;
-      }
+      const existing = document.querySelector(`script[${opts.attr}="true"]`) as HTMLScriptElement | null;
+      if (existing) return resolve();
+
       const script = document.createElement("script");
-      // deterministic local path served by Next: /libsodium/libsodium-wrappers.js
-      // NOTE: the repo build step should copy the correct libsodium bundle (libsodium-wrappers.js) and related files
-      // into apps/web/public/libsodium so the browser can load it deterministically.
-      script.src = "/libsodium/libsodium-wrappers.js";
+      script.src = opts.src;
       script.async = true;
-      script.setAttribute("data-sj-libsodium-local", "true");
-      script.onload = () => {
-        if ((window as any).sodium && (window as any).sodium.ready) {
-          (window as any).sodium.ready.then(() => resolve()).catch(reject);
-        } else {
-          // small delay to allow attachment
-          setTimeout(() => {
-            if ((window as any).sodium && (window as any).sodium.ready) {
-              (window as any).sodium.ready.then(() => resolve()).catch(reject);
-            } else {
-              reject(new Error("Local libsodium loaded but window.sodium not found"));
-            }
-          }, 50);
-        }
-      };
-      script.onerror = (e) => reject(new Error("Failed to load local libsodium script: " + String(e)));
+      script.defer = true;
+      script.setAttribute(opts.attr, "true");
+      script.onload = () => resolve();
+      script.onerror = (e) => reject(new Error(`Failed to load local script ${opts.src}: ${String(e)}`));
       document.head.appendChild(script);
     });
-    const sodium = (window as any).sodium;
-    if (!sodium) throw new Error("Local libsodium loaded but window.sodium is missing");
-    if (sodium && sodium.ready) await sodium.ready;
-    appendLog(logRef, setLogs, "Loaded libsodium from local /libsodium/ and sodium.ready resolved.");
-    return sodium;
+  }
+
+  try {
+    // Ensure sumo core is loaded first
+    await injectScriptOnce({ src: LIBSODIUM_LOCAL_SUMO_JS, attr: "data-sj-libsodium-sumo-local" });
+    appendLog(logRef, setLogs, "Local libsodium-sumo.js injected (or already present).");
+
+    // Then load wrappers which attach window.sodium
+    await injectScriptOnce({ src: LIBSODIUM_LOCAL_WRAPPERS_JS, attr: "data-sj-libsodium-wrappers-local" });
+    appendLog(logRef, setLogs, "Local libsodium-wrappers.js injected (or already present).");
+
+    // Poll for window.sodium + sodium.ready
+    const start = Date.now();
+    const timeoutMs = 15000;
+
+    while (Date.now() - start < timeoutMs) {
+      const s = getWinSodium();
+      if (s) {
+        appendLog(logRef, setLogs, "window.sodium present after local script load: YES");
+
+        // Explicit attach (requirement)
+        (globalThis as any).sodium = s;
+        (window as any).sodium = s;
+
+        if (s.ready) {
+          try {
+            await s.ready;
+            appendLog(logRef, setLogs, "ready awaited: YES (local UMD)");
+            appendLog(logRef, setLogs, "Loaded libsodium locally and sodium.ready resolved.");
+            return s;
+          } catch (e: any) {
+            appendLog(logRef, setLogs, `sodium.ready rejected (local UMD): ${((e && e.message) || String(e))}`);
+            break;
+          }
+        } else {
+          appendLog(logRef, setLogs, "window.sodium present but .ready missing — waiting...");
+        }
+      }
+
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    throw new Error("Timed out waiting for local libsodium to attach window.sodium and resolve sodium.ready");
   } catch (errLocal: any) {
-    appendLog(logRef, setLogs, `Local static load failed: ${(((errLocal as any) && (errLocal as any).message) || String(errLocal))}`);
+    appendLog(
+      logRef,
+      setLogs,
+      `Local static load failed: ${(((errLocal as any) && (errLocal as any).message) || String(errLocal))}`
+    );
+
     // CDN fallback only when explicitly allowed by env var
     if (ALLOW_CDN) {
       appendLog(logRef, setLogs, "ALLOW_CDN enabled — attempting CDN fallback...");
@@ -116,31 +155,25 @@ async function loadSodium(allowCdn: boolean, logRef: React.MutableRefObject<stri
           script.src = LIBSODIUM_CDN;
           script.async = true;
           script.setAttribute("data-sj-libsodium", "true");
-          script.onload = () => {
-            if ((window as any).sodium && (window as any).sodium.ready) {
-              (window as any).sodium.ready.then(() => {}).catch(() => {});
-            }
-          };
-          script.onerror = (e) => {
-            appendLog(logRef, setLogs, "CDN script failed to load: " + String(e));
-          };
           document.head.appendChild(script);
         }
-        // wait for window.sodium.ready
+
         const start = Date.now();
         const timeoutMs = 15000;
         while (Date.now() - start < timeoutMs) {
-          if ((window as any).sodium && (window as any).sodium.ready) {
+          const s = getWinSodium();
+          if (s && s.ready) {
             try {
-              await (window as any).sodium.ready;
+              await s.ready;
+              (globalThis as any).sodium = s;
+              appendLog(logRef, setLogs, "ready awaited: YES (CDN)");
               appendLog(logRef, setLogs, "Loaded libsodium from CDN and sodium.ready resolved.");
-              return (window as any).sodium;
+              return s;
             } catch (e) {
               appendLog(logRef, setLogs, `sodium.ready rejected (CDN): ${(((e as any) && (e as any).message) || String(e))}`);
               break;
             }
           }
-          // small delay
           // eslint-disable-next-line no-await-in-loop
           await new Promise((r) => setTimeout(r, 100));
         }
@@ -156,35 +189,33 @@ async function loadSodium(allowCdn: boolean, logRef: React.MutableRefObject<stri
   // 3) Optional CDN fallback when explicitly allowed
   if (allowCdn) {
     appendLog(logRef, setLogs, "ALLOW_CDN enabled — attempting to load libsodium from CDN...");
-    // If already added script tag, wait for window.sodium
     const existing = document.querySelector('script[data-sj-libsodium="true"]');
     if (!existing) {
       const script = document.createElement("script");
       script.src = LIBSODIUM_CDN;
       script.async = true;
       script.setAttribute("data-sj-libsodium", "true");
-      // Attach to head
       document.head.appendChild(script);
     } else {
       appendLog(logRef, setLogs, "CDN script tag already present; waiting for sodium global.");
     }
 
-    // Wait for window.sodium.ready
     const start = Date.now();
     const timeoutMs = 15000;
-    // Poll for window.sodium
     while (Date.now() - start < timeoutMs) {
-      if ((window as any).sodium && (window as any).sodium.ready) {
+      const s = getWinSodium();
+      if (s && s.ready) {
         try {
-          await (window as any).sodium.ready;
+          await s.ready;
+          (globalThis as any).sodium = s;
+          appendLog(logRef, setLogs, "ready awaited: YES (CDN optional)");
           appendLog(logRef, setLogs, "Loaded libsodium from CDN and sodium.ready resolved.");
-          return (window as any).sodium;
+          return s;
         } catch (err) {
           appendLog(logRef, setLogs, `sodium.ready rejected: ${(((err as any) && (err as any).message) || String(err))}`);
           break;
         }
       }
-      // small delay
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -193,7 +224,7 @@ async function loadSodium(allowCdn: boolean, logRef: React.MutableRefObject<stri
 
   // 4) Fail hard
   throw new Error(
-    "libsodium-wrappers-sumo could not be loaded locally. Ensure 'libsodium-wrappers-sumo' is installed and resolvable by the app build. " +
+    "libsodium-wrappers-sumo could not be loaded locally. Ensure apps/web/public/libsodium contains BOTH libsodium-sumo.js and libsodium-wrappers.js so the UMD wrapper can attach window.sodium. " +
       (allowCdn ? "CDN fallback attempted but failed." : "CDN fallback disabled. Set NEXT_PUBLIC_SMOKE_ALLOW_CDN=1 to allow CDN fallback.")
   );
 }

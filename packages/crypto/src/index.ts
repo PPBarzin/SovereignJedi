@@ -28,7 +28,8 @@
    Exports (named):
    - prepareUnlock
    - buildUnlockMessageV1
-   - deriveKekFromSignature
+   - assertUnlockNotExpired
+   - deriveKekFromUnlockSignature (ONLY public KEK derivation API; enforces OQ-06 expiry refusal)
    - encryptFile
    - decryptFile
 
@@ -69,9 +70,50 @@ export async function prepareUnlock(params: {
   return mod.prepareUnlock(params);
 }
 
-export async function deriveKekFromSignature(signatureBytes: Uint8Array, saltBytes: Uint8Array | null): Promise<Uint8Array> {
+/**
+ * assertUnlockNotExpired
+ *
+ * OQ-06 compliance helper: refuse expired unlock messages before KEK derivation.
+ *
+ * @param unlock the BuildUnlockResult produced by buildUnlockMessageV1/prepareUnlock
+ * @param nowMs current time in milliseconds (default: Date.now())
+ *
+ * Throws Error("Unlock message expired") when expiresAt <= nowMs.
+ */
+export function assertUnlockNotExpired(unlock: BuildUnlockResult, nowMs = Date.now()): void {
+  const expiresAt = unlock?.canonicalObject?.expiresAt;
+  const ts = Date.parse(expiresAt);
+  if (!expiresAt || Number.isNaN(ts) || ts <= nowMs) {
+    throw new Error("Unlock message expired");
+  }
+}
+
+/**
+ * NOTE (OQ-06 compliance):
+ * We intentionally do NOT export `deriveKekFromSignature` publicly.
+ * KEK derivation MUST go through `deriveKekFromUnlockSignature`, which enforces expiry refusal.
+ *
+ * Internal helper used only by the public `deriveKekFromUnlockSignature`.
+ */
+async function deriveKekFromSignatureInternal(signatureBytes: Uint8Array, saltBytes: Uint8Array | null): Promise<Uint8Array> {
   const mod = await import('./v0_local_encryption/localEncryption');
   return mod.deriveKekFromSignature(signatureBytes, saltBytes);
+}
+
+/**
+ * deriveKekFromUnlockSignature
+ *
+ * OQ-06 compliant KEK derivation helper.
+ * MUST call assertUnlockNotExpired(unlock) before delegating to deriveKekFromSignature().
+ */
+export async function deriveKekFromUnlockSignature(params: {
+  signatureBytes: Uint8Array;
+  saltBytes: Uint8Array | null;
+  unlock: BuildUnlockResult;
+  nowMs?: number;
+}): Promise<Uint8Array> {
+  assertUnlockNotExpired(params.unlock, params.nowMs ?? Date.now());
+  return deriveKekFromSignatureInternal(params.signatureBytes, params.saltBytes);
 }
 
 export async function generateFileKey(): Promise<Uint8Array> {
@@ -85,8 +127,8 @@ export async function encryptFile(
     fileKey?: Uint8Array;
     kek: Uint8Array;
     salt: Uint8Array;
-    walletPubKey: string; // REQUIRED (Protocol V2)
-    fileId?: string; // optional (Protocol V2) — if omitted, generated and stored in EncryptedFile
+    walletPubKey: string; // REQUIRED (Protocol V3)
+    fileId?: string; // optional (Protocol V3) — if omitted, generated and stored in EncryptedFile
     filename?: string;
     mimeType?: string;
   }
@@ -140,13 +182,13 @@ export function toHex(bytes: Uint8Array | ArrayBuffer): string {
 
 export function fromHex(hex: string): Uint8Array {
   if (hex.length % 2 !== 0) {
-    throw new Error("Invalid hex string");
+    throw new Error("Invalid hex string length");
   }
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    out[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
   }
-  return out;
+  return bytes;
 }
 
 /* -------------------------

@@ -14,7 +14,8 @@
  *   The caller MUST generate a per-envelope `salt` (16 or 32 bytes CSPRNG) and:
  *     1) call `prepareUnlock(...)` (or equivalent) to obtain the `unlock` object and the `salt`;
  *     2) have the wallet sign the canonical `unlock.messageToSign`;
- *     3) derive the KEK via `deriveKekFromSignature(signatureBytes, salt)`;
+ *     3) derive the KEK via `deriveKekFromUnlockSignature({ signatureBytes, saltBytes: salt, unlock })`;
+ *        - This MUST enforce OQ-06 by refusing expired unlock messages before KEK derivation.
  *     4) call `encryptFile(...)` passing the derived `kek` and the same `salt`;
  *     5) persist `{ encryptedFile, envelope }` where `envelope.kekDerivation.salt` contains the base64-encoded salt.
  *

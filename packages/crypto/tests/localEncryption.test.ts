@@ -100,7 +100,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     const walletId = 'test-wallet-guard';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletId });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     // @ts-expect-error walletPubKey is required by protocol V3
     await expect(sjcrypto.encryptFile(plaintext, { kek, salt })).rejects.toThrow(/walletPubKey is required/i);
@@ -120,7 +124,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
 
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const encResult = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -152,7 +160,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     const walletPubKey = 'test-wallet-02';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const encResult = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -198,7 +210,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     const walletPubKey = 'test-wallet-bind-salt';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const encResult = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -226,7 +242,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     const walletPubKey = 'test-wallet-bind-wallet';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const encResult = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -251,7 +271,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     const walletPubKey = 'test-wallet-bind-fileId';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const encResult = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -273,12 +297,42 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     await expect(sjcrypto.decryptFile(tamperedFile as any, envelope, kek)).rejects.toThrow();
   });
 
+  it('OQ-06: expired SJ_UNLOCK_V1 unlock message is refused before KEK derivation', async () => {
+    const walletPubKey = 'test-wallet-oq06-expired';
+    const nowMs = Date.now();
+    const issuedAt = new Date(nowMs - 60 * 60 * 1000).toISOString(); // 1h ago
+    const expiresAt = new Date(nowMs - 30 * 60 * 1000).toISOString(); // expired 30m ago
+
+    const unlock = await sjcrypto.buildUnlockMessageV1({
+      wallet: walletPubKey,
+      issuedAt,
+      expiresAt,
+    });
+
+    // Signature content doesn't matter for the expiry refusal path, but we still provide a real signature.
+    const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
+    const { salt } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
+
+    await expect(
+      sjcrypto.deriveKekFromUnlockSignature({
+        signatureBytes: sigBytes,
+        saltBytes: salt,
+        unlock,
+        nowMs,
+      })
+    ).rejects.toThrow(/expired/i);
+  });
+
   it('immutable metadata: modifying originalFileName -> FAIL', async () => {
     const plaintext = utf8Encode('immutable originalFileName');
     const walletPubKey = 'test-wallet-immut-name';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const { encryptedFile, envelope } = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -302,7 +356,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     const walletPubKey = 'test-wallet-immut-mime';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const { encryptedFile, envelope } = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -326,7 +384,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     const walletPubKey = 'test-wallet-immut-size';
     const { salt, unlock } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
-    const kek = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
 
     const { encryptedFile, envelope } = await sjcrypto.encryptFile(plaintext, {
       kek,
@@ -357,7 +419,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     // Flow A
     const { salt: saltA, unlock: unlockA } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes: sigA } = await generateEd25519KeypairAndSign(unlockA.messageToSign);
-    const kekA = await sjcrypto.deriveKekFromSignature(sigA, saltA);
+    const kekA = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigA,
+      saltBytes: saltA,
+      unlock: unlockA,
+    });
     const resA = await sjcrypto.encryptFile(plaintext, {
       kek: kekA,
       salt: saltA,
@@ -369,7 +435,11 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     // Flow B (fresh salt/unlock/sign)
     const { salt: saltB, unlock: unlockB } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes: sigB } = await generateEd25519KeypairAndSign(unlockB.messageToSign);
-    const kekB = await sjcrypto.deriveKekFromSignature(sigB, saltB);
+    const kekB = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigB,
+      saltBytes: saltB,
+      unlock: unlockB,
+    });
     const resB = await sjcrypto.encryptFile(plaintext, {
       kek: kekB,
       salt: saltB,
@@ -397,13 +467,21 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
     // Flow A
     const { salt: saltA, unlock: unlockA } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes: sigA } = await generateEd25519KeypairAndSign(unlockA.messageToSign);
-    const kekA = await sjcrypto.deriveKekFromSignature(sigA, saltA);
+    const kekA = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigA,
+      saltBytes: saltA,
+      unlock: unlockA,
+    });
     const resA = await sjcrypto.encryptFile(plaintext, { kek: kekA, salt: saltA, walletPubKey, filename: 'r.txt', mimeType: 'text/plain' });
 
     // Flow B (fresh salt/unlock/sign)
     const { salt: saltB, unlock: unlockB } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
     const { sigBytes: sigB } = await generateEd25519KeypairAndSign(unlockB.messageToSign);
-    const kekB = await sjcrypto.deriveKekFromSignature(sigB, saltB);
+    const kekB = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigB,
+      saltBytes: saltB,
+      unlock: unlockB,
+    });
     const resB = await sjcrypto.encryptFile(plaintext, { kek: kekB, salt: saltB, walletPubKey, filename: 'r.txt', mimeType: 'text/plain' });
 
     expect(resA.encryptedFile.ciphertext).not.toEqual(resB.encryptedFile.ciphertext);
@@ -418,12 +496,24 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
 
     const { sigBytes } = await generateEd25519KeypairAndSign(unlock.messageToSign);
 
-    const kek1 = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
-    const kek2 = await sjcrypto.deriveKekFromSignature(sigBytes, salt);
+    const kek1 = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
+    const kek2 = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: salt,
+      unlock,
+    });
     expect(Buffer.from(kek1)).toEqual(Buffer.from(kek2));
 
-    const otherSalt = sjcrypto.prepareUnlock({ wallet: walletPubKey }).salt;
-    const kek3 = await sjcrypto.deriveKekFromSignature(sigBytes, otherSalt);
+    const { salt: otherSalt, unlock: unlock2 } = await sjcrypto.prepareUnlock({ wallet: walletPubKey });
+    const kek3 = await sjcrypto.deriveKekFromUnlockSignature({
+      signatureBytes: sigBytes,
+      saltBytes: otherSalt,
+      unlock: unlock2,
+    });
     expect(Buffer.from(kek1)).not.toEqual(Buffer.from(kek3));
   });
 
@@ -439,5 +529,10 @@ describe('localEncryption — protocol V3 (wrap AAD binding + immutable metadata
 
     const now = new Date();
     expect(new Date(unlock.canonicalObject.expiresAt).getTime()).toBeLessThan(now.getTime());
+  });
+
+  it('export surface: @sj/crypto must not export deriveKekFromSignature (bypass path)', async () => {
+    expect((sjcrypto as any).deriveKekFromSignature).toBeUndefined();
+    expect(typeof (sjcrypto as any).deriveKekFromUnlockSignature).toBe('function');
   });
 });

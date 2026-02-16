@@ -1,3 +1,16 @@
+# Rapport de Qualification — Étape 4 (Task 4 — Local encryption pipeline)
+
+> Ce rapport couvre uniquement les tests demandés du protocole de qualification (OQ-01, OQ-02, OQ-03, OQ-04, OQ-05, OQ-06, OQ-09, OQ-10) et annexe les preuves d’exécution.
+
+---
+
+## 1) Preuve — packages/crypto (exécution suite tests)
+
+Commande :
+- `pnpm -C packages/crypto test`
+
+Output complet :
+```/dev/null/vitest-output-packages-crypto.txt#L1-23
 > @sj/crypto@0.1.0 test /home/ppbarzin/Documents/Programmation/tools/SovereignJedi/packages/crypto
 > vitest --run
 
@@ -14,47 +27,17 @@ stdout | tests/localEncryption.test.ts
 libsodium loaded from local test-assets (file URL import) and attached to globalThis.sodium for tests
 
  ✓ tests/crypto.test.ts (5)
- ✓ tests/localEncryption.test.ts (13)
+ ✓ tests/localEncryption.test.ts (14)
 
  Test Files  2 passed (2)
-      Tests  18 passed (18)
-   Start at  09:52:43
-   Duration  772ms (transform 178ms, setup 0ms, collect 109ms, tests 229ms, environment 0ms, prepare 333ms)
+      Tests  19 passed (19)
+   Start at  11:08:50
+   Duration  827ms (transform 192ms, setup 0ms, collect 98ms, tests 214ms, environment 0ms, prepare 297ms)
 ```
-
-Interprétation (liens avec OQ) :
-- **OQ-01** (`prepareUnlock`) : couvert par les tests d’intégration du pipeline local (génération salt + message canonique).
-- **OQ-02** (`deriveKekFromSignature`) : couvert par le test “KEK derivation determinism”.
-- **OQ-03** (`encryptFile`) : couvert par les tests round-trip et structure envelope/header.
-- **OQ-04** (round-trip) : couvert par “round-trip V3”.
-- **OQ-05** (tamper) : couvert par “tamper tests” + “swap salt / walletPubKey / fileId”.
-- **OQ-09** (metadata immuables) : couvert par les tests “immutable metadata: modifying … -> FAIL”.
-- **OQ-10** (unicité fileId) : couvert par un test dédié **avec assertion explicite `fileId1 !== fileId2`** (voir §OQ-10 ci-dessous).
 
 ---
 
-## OQ-10 — Preuve explicite (fileId1 !== fileId2)
-
-### Nom du test (packages/crypto)
-- `OQ-10: fileId uniqueness — encrypting same plaintext twice (same immutable metadata) yields different fileId`
-
-Fichier :
-- `packages/crypto/tests/localEncryption.test.ts`
-
-### Extrait d’assertion (preuve)
-```/dev/null/oq-10-assertion-excerpt.txt#L1-3
-// Explicit OQ-10 assertion (direct comparison)
-expect(resA.encryptedFile.fileId).not.toEqual(resB.encryptedFile.fileId);
-```
-
-### Output Vitest montrant que le test passe (preuve)
-Voir l’output complet en tête de ce document (suite `packages/crypto`), et notamment :
-- `✓ tests/localEncryption.test.ts (13)`
-- `Tests  18 passed (18)`
-
----
-
-### 3.2 Preuve — apps/web (exécution suite tests web)
+## 2) Preuve — apps/web (exécution suite tests web)
 
 Même si l’étape demandée est centrée crypto, la suite web a été exécutée pour s’assurer qu’il n’y a pas de régression globale.
 
@@ -82,73 +65,82 @@ Output complet :
 
 ---
 
-## 4) Détails de qualification par test (OQ)
+## 3) Détails de qualification par test (OQ)
 
 ### OQ-01 — Génération du message SJ_UNLOCK_V1 (`prepareUnlock`)
 **Objectif** : message canonique + salt prêts à être signés.  
-**Preuve** : suite `packages/crypto` OK (voir §3.1) ; tests d’intégration `localEncryption` exercent `prepareUnlock` avant dérivation KEK.  
+**Preuve** : suite `packages/crypto` OK (voir §1). Les tests d’intégration `localEncryption` exercent `prepareUnlock` avant dérivation KEK.  
 **Résultat** : ✅ PASS.
 
 ### OQ-02 — Dérivation de la KEK (`deriveKekFromSignature`)
 **Objectif** : déterminisme signature+salt, variation quand salt diffère.  
-**Preuve** : test “KEK derivation determinism” dans `packages/crypto/tests/localEncryption.test.ts` (suite verte, §3.1).  
+**Preuve** : test “KEK derivation determinism” (suite verte, §1).  
 **Résultat** : ✅ PASS.
 
 ### OQ-03 — Chiffrement local (`encryptFile`)
 **Objectif** : produire un payload chiffré + envelope, sans fuite, fileKey non persistée.  
-**Preuve** : round-trip + tamper tests (suite verte, §3.1).  
+**Preuve** : round-trip + tamper tests (suite verte, §1).  
 **Résultat** : ✅ PASS.
 
 ### OQ-04 — Déchiffrement local round-trip
 **Objectif** : bytes identiques entrée/sortie.  
-**Preuve** : test “round-trip V3” (suite verte, §3.1).  
+**Preuve** : test “round-trip V3” (suite verte, §1).  
 **Résultat** : ✅ PASS.
 
 ### OQ-05 — Résistance aux altérations internes (ciphertext / nonce / salt)
 **Objectif** : toute altération doit faire échouer le decrypt.  
-**Preuve** : tests de tamper (ciphertext/nonce) + swap salt (suite verte, §3.1).  
+**Preuve** : tests de tamper (ciphertext/nonce) + swap salt (suite verte, §1).  
 **Résultat** : ✅ PASS.
+
+### OQ-06 — Expiration du déverrouillage (refus hard avant dérivation KEK)
+**Objectif** : un message `SJ_UNLOCK_V1` expiré doit être refusé **avant** la dérivation de la KEK.  
+
+**Preuve (test dédié + refus hard)**  
+- **Test** : `OQ-06: expired SJ_UNLOCK_V1 unlock message is refused before KEK derivation`  
+- **Fichier** : `packages/crypto/tests/localEncryption.test.ts`  
+- **Attendu** : throw contenant “expired”.
+
+**Résultat** : ✅ PASS (voir §1 : `tests/localEncryption.test.ts (14)` passe, 19 tests au total).
 
 ### OQ-09 — Intégrité des metadata immuables
 **Objectif** : modifier `originalFileName`, `mimeType`, `fileSize`, `fileId` → decrypt FAIL.  
-**Preuve** : tests “immutable metadata: modifying … -> FAIL” + test swap `fileId` (suite verte, §3.1).  
+**Preuve** : tests “immutable metadata: modifying … -> FAIL” + test swap `fileId` (suite verte, §1).  
 **Résultat** : ✅ PASS.
 
-### OQ-10 — Unicité du fileId
-**Objectif** : 2 encryptions du même fichier (mêmes metadata immuables) → `fileId` différent.  
+### OQ-10 — Unicité du fileId (preuve explicite `fileId1 !== fileId2`)
+**Objectif** : chiffrer deux fois le même fichier (mêmes metadata immuables) → `fileId` différent.  
 
-**Preuve (test dédié + assertion explicite)**  
-- **Test** : `OQ-10: fileId uniqueness — encrypting same plaintext twice (same immutable metadata) yields different fileId`  
-- **Fichier** : `packages/crypto/tests/localEncryption.test.ts`  
-- **Assertion (extrait)** :
+**Nom du test (packages/crypto)**  
+- `OQ-10: fileId uniqueness — encrypting same plaintext twice (same immutable metadata) yields different fileId`
+
+**Extrait d’assertion (preuve)**  
 ```/dev/null/oq-10-assertion-excerpt.txt#L1-3
 // Explicit OQ-10 assertion (direct comparison)
 expect(resA.encryptedFile.fileId).not.toEqual(resB.encryptedFile.fileId);
 ```
 
-**Preuve d’exécution** : l’output Vitest `packages/crypto` en tête de ce document montre que `tests/localEncryption.test.ts (13)` passe (18 tests au total).  
+**Preuve d’exécution**  
+Voir l’output Vitest en §1 (suite `packages/crypto`) :
+- `✓ tests/localEncryption.test.ts (14)`
+- `Tests  19 passed (19)`
 
 **Résultat** : ✅ PASS.
 
 ---
 
-## 5) Sécurité — Non-persistance des secrets (confirmation)
-
+## 4) Sécurité — Non-persistance des secrets (confirmation)
 - Aucun stockage persistant de **KEK**, **fileKey**, signature, seed, secret wallet dans `packages/crypto`.
 - `fileId` et metadata header (originalFileName/mimeType/fileSize) sont **non secrets** et font partie des artefacts techniques.
 - Le binding cryptographique des metadata immuables est assuré par `headerHash` dans le wrap AAD (recalculé dynamiquement), sans persister `headerHash` séparément.
 
 ---
 
-## 6) Conclusion
-
+## 5) Conclusion
 Sur le périmètre demandé, la **qualification Étape 4** est **VALIDÉE** :
 
-- ✅ OQ-01 / OQ-02 / OQ-03 / OQ-04 / OQ-05 / OQ-09 / OQ-10 : PASS  
+- ✅ OQ-01 / OQ-02 / OQ-03 / OQ-04 / OQ-05 / OQ-06 / OQ-09 / OQ-10 : PASS  
 - ✅ Tests automatisés verts (`packages/crypto` + `apps/web`)  
 - ✅ Aucun secret persistant détecté dans le périmètre crypto
-
-Ce rapport constitue la preuve d’exécution et de réussite des tests sélectionnés du protocole de qualification.
 
 ---
 Fin du rapport.

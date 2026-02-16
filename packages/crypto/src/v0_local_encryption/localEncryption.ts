@@ -1,31 +1,34 @@
 /**
- * Local encryption pipeline - v0 skeleton
+ * Local encryption pipeline - v0
  *
- * Implements high-level glue for Task 4 (local encryption pipeline).
- * This file provides:
- *  - `buildUnlockMessageV1(params)` : builds canonical SJ_UNLOCK_V1 object + string to sign
- *  - `prepareUnlock(params)` : prepares salt + canonical unlock object
- *  - `deriveKekFromSignature(signatureBytes, saltBytes)` : pre-hash signature + HKDF-SHA256
- *  - `generateFileKey()` : generate 32-byte file key
- *  - `encryptFile(...)` / `decryptFile(...)` : high-level APIs (libsodium-based flow)
+ * Implements the Task 4 local (offline) cryptographic pipeline:
+ * - Canonical unlock message generation (SJ_UNLOCK_V1)
+ * - KEK derivation from wallet signature via HKDF-SHA256 (implementation detail)
+ * - Per-file encryption (XChaCha20-Poly1305)
+ * - Envelope wrap/unwrap of the per-file key (XChaCha20-Poly1305)
+ *
+ * IMPORTANT (OQ-06 system-wide compliance):
+ * - This module still exposes `deriveKekFromSignature(signatureBytes, saltBytes)` as a low-level primitive.
+ * - The PUBLIC API MUST NOT expose a bypass that allows KEK derivation without expiry enforcement.
+ * - Expiry enforcement must happen at the public entrypoint (e.g. `@sj/crypto` must require
+ *   `deriveKekFromUnlockSignature({ signatureBytes, saltBytes, unlock })` which calls an expiry assertion
+ *   before delegating to the low-level primitive).
  *
  * Protocol note (Wrap AAD Binding V3):
  * - The wrap AAD MUST bind immutable technical header metadata via:
- *     headerHash = SHA-256( canonicalize(headerImmutableSubset) )
+ *     headerHash = SHA-256(canonicalize(headerImmutableSubset))
  *   where headerImmutableSubset = { originalFileName, mimeType, fileSize, fileId }
  * - wrapAAD = canonicalize({ v: 3, salt, walletPubKey, fileId, headerHash })
  * - headerHash is NOT stored separately; it is recomputed from the header present in the package.
  *
  * Notes:
- *  - XChaCha20-Poly1305 operations require `libsodium-wrappers`. This file dynamically imports
- *    libsodium in an ESM-friendly way and awaits initialization.
- *  - Lower-level helpers used here are imported from the package root (`../index`):
- *      - `sha256`
- *      - `deriveKeyHKDF`
- *      - `cryptoGetRandomBytes`
- *      - `utf8Encode`
- *
- * This is an initial, self-contained implementation intended for iteration.
+ * - XChaCha20-Poly1305 operations require `libsodium-wrappers-sumo`. This file dynamically imports
+ *   libsodium in an ESM-friendly way and awaits initialization.
+ * - Lower-level helpers used here are imported from the package root (`../index`):
+ *   - sha256
+ *   - deriveKeyHKDF
+ *   - cryptoGetRandomBytes
+ *   - utf8Encode
  */
 
 import canonicalize from 'canonicalize';
