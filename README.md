@@ -89,11 +89,16 @@ Scope mock:
 
 ## Documentation
 
-Structure attendue:
+Structure expected:
 - README.md (ce document): vision générale, setup, architecture
 - docs/tasks/task-XX.md: documentation spécifique par task
 
-Chaque document de task doit contenir:
+Smoke / libsodium quick notes:
+- smoke: activer `NEXT_PUBLIC_ENABLE_SMOKE=1` → ouvrir `/dev/crypto-smoke` pour lancer le test runtime (1KB encrypt/decrypt).
+- sync: synchroniser le bundle libsodium local via `pnpm run libsodium:sync` (copie déterministe du bundle `libsodium-wrappers-sumo@0.7.16`).
+- browser: pré‑charger libsodium dans `globalThis.sodium` (ou bundle `libsodium-wrappers-sumo`) avant d’appeler l’API `@sj/crypto`.
+
+Each document de task must contain:
 - Objectif de la task
 - Ce qui a été implémenté
 - Comment tester

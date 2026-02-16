@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useEffect } from 'react'
 import type { AppProps } from 'next/app'
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
@@ -54,6 +54,8 @@ export default function App({ Component, pageProps }: AppProps) {
     }
     return [new PhantomWalletAdapter()]
   }, [])
+
+
 
   return (
     <ConnectionProvider endpoint={endpoint}>

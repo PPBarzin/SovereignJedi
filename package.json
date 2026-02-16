@@ -14,6 +14,7 @@
   ],
   "scripts": {
     "bootstrap": "pnpm install",
+    "libsodium:sync": "node ./scripts/sync-libsodium.js",
     "test": "pnpm -r --reporter=default test",
     "build": "pnpm --filter \"packages/*\" -r build && pnpm --filter \"apps/*\" -r build",
     "lint": "pnpm -r lint",

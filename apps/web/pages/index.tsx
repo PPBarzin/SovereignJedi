@@ -366,6 +366,7 @@ export default function Home(): JSX.Element {
             }}
           />
           <strong style={{ letterSpacing: 0.3 }}>Sovereign Jedi</strong>
+
         </div>
 
         <div style={styles.headerRight}>

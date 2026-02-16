@@ -1,0 +1,7 @@
+{
+  "module": "libsodium-wrappers-sumo",
+  "version": "0.7.16",
+  "distDir": "dist/modules-sumo",
+  "copiedAt": "2026-01-25T18:50:00Z",
+  "note": "Deterministic copy of the libsodium-wrappers-sumo bundle for tests and browser smoke. Keep this in sync using the top-level script `pnpm run libsodium:sync`."
+}

@@ -22,7 +22,131 @@
  * The functions are written in portable TypeScript and avoid any runtime side-effects.
  */
 
-const encoder = new TextEncoder();
+/* Task 4 public API wrappers — dynamic import to avoid circular runtime import and prevent
+   circular module initialization at package entrypoint.
+
+   Exports (named):
+   - prepareUnlock
+   - buildUnlockMessageV1
+   - assertUnlockNotExpired
+   - deriveKekFromUnlockSignature (ONLY public KEK derivation API; enforces OQ-06 expiry refusal)
+   - encryptFile
+   - decryptFile
+
+   Notes:
+   - These wrappers dynamically import the implementation in `src/v0_local_encryption/localEncryption`
+     at call time so the package entrypoint does not create a circular runtime dependency.
+   - Types are re-exported as type-only exports from `src/v0_local_encryption/types` so TypeScript
+     consumers can import the shapes without introducing runtime imports.
+   - The implementation enforces libsodium-only; the browser integration is expected to provide
+     `globalThis.sodium` or otherwise make `libsodium-wrappers-sumo` available at runtime. If absent,
+     the underlying implementation will fail hard (throw).
+*/
+export type { EncryptedFile, Envelope, UnlockMessageV1, BuildUnlockResult } from './v0_local_encryption/types';
+
+/**
+ * Dynamic wrappers that forward calls to the implementation module.
+ * These are async to allow dynamic import without creating circular imports.
+ */
+export async function buildUnlockMessageV1(params: {
+  origin?: string;
+  wallet: string;
+  vaultId?: string;
+  nonceBytes?: Uint8Array;
+  issuedAt?: string;
+  expiresAt?: string;
+}): Promise<BuildUnlockResult> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.buildUnlockMessageV1(params);
+}
+
+export async function prepareUnlock(params: {
+  origin?: string;
+  wallet: string;
+  vaultId?: string;
+  saltBytes?: Uint8Array;
+}): Promise<{ salt: Uint8Array; unlock: BuildUnlockResult }> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.prepareUnlock(params);
+}
+
+/**
+ * assertUnlockNotExpired
+ *
+ * OQ-06 compliance helper: refuse expired unlock messages before KEK derivation.
+ *
+ * @param unlock the BuildUnlockResult produced by buildUnlockMessageV1/prepareUnlock
+ * @param nowMs current time in milliseconds (default: Date.now())
+ *
+ * Throws Error("Unlock message expired") when expiresAt <= nowMs.
+ */
+export function assertUnlockNotExpired(unlock: BuildUnlockResult, nowMs = Date.now()): void {
+  const expiresAt = unlock?.canonicalObject?.expiresAt;
+  const ts = Date.parse(expiresAt);
+  if (!expiresAt || Number.isNaN(ts) || ts <= nowMs) {
+    throw new Error("Unlock message expired");
+  }
+}
+
+/**
+ * NOTE (OQ-06 compliance):
+ * We intentionally do NOT export `deriveKekFromSignature` publicly.
+ * KEK derivation MUST go through `deriveKekFromUnlockSignature`, which enforces expiry refusal.
+ *
+ * Internal helper used only by the public `deriveKekFromUnlockSignature`.
+ */
+async function deriveKekFromSignatureInternal(signatureBytes: Uint8Array, saltBytes: Uint8Array | null): Promise<Uint8Array> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.deriveKekFromSignature(signatureBytes, saltBytes);
+}
+
+/**
+ * deriveKekFromUnlockSignature
+ *
+ * OQ-06 compliant KEK derivation helper.
+ * MUST call assertUnlockNotExpired(unlock) before delegating to deriveKekFromSignature().
+ */
+export async function deriveKekFromUnlockSignature(params: {
+  signatureBytes: Uint8Array;
+  saltBytes: Uint8Array | null;
+  unlock: BuildUnlockResult;
+  nowMs?: number;
+}): Promise<Uint8Array> {
+  assertUnlockNotExpired(params.unlock, params.nowMs ?? Date.now());
+  return deriveKekFromSignatureInternal(params.signatureBytes, params.saltBytes);
+}
+
+export async function generateFileKey(): Promise<Uint8Array> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.generateFileKey();
+}
+
+export async function encryptFile(
+  plaintext: Uint8Array,
+  options: {
+    fileKey?: Uint8Array;
+    kek: Uint8Array;
+    salt: Uint8Array;
+    walletPubKey: string; // REQUIRED (Protocol V3)
+    fileId?: string; // optional (Protocol V3) — if omitted, generated and stored in EncryptedFile
+    filename?: string;
+    mimeType?: string;
+  }
+): Promise<{
+  encryptedFile: EncryptedFile;
+  envelope: Envelope;
+  fileKey?: Uint8Array;
+}> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.encryptFile(plaintext, options);
+}
+
+export async function decryptFile(encryptedFile: EncryptedFile, envelope: Envelope, kek: Uint8Array): Promise<Uint8Array> {
+  const mod = await import('./v0_local_encryption/localEncryption');
+  return mod.decryptFile(encryptedFile, envelope, kek);
+}
+
+ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 function getSubtle(): SubtleCrypto {
@@ -58,13 +182,13 @@ export function toHex(bytes: Uint8Array | ArrayBuffer): string {
 
 export function fromHex(hex: string): Uint8Array {
   if (hex.length % 2 !== 0) {
-    throw new Error("Invalid hex string");
+    throw new Error("Invalid hex string length");
   }
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    out[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
   }
-  return out;
+  return bytes;
 }
 
 /* -------------------------
