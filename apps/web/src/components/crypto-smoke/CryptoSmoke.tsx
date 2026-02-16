@@ -1,5 +1,12 @@
 import React, { useState, useRef } from "react";
 
+const ALLOW_CDN =
+  process.env.NODE_ENV !== "production" &&
+  process.env.NEXT_PUBLIC_SMOKE_ALLOW_CDN === "1";
+
+const LIBSODIUM_CDN =
+  "https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.7.16/dist/modules-sumo/libsodium-wrappers.js";
+
 /**
  * CryptoSmoke
  *
@@ -36,7 +43,9 @@ export default function CryptoSmoke(): JSX.Element {
     setLogs("");
 
     try {
-      appendLog("Starting Crypto smoke test — load libsodium-wrappers-sumo from CDN or use global sodium if present");
+      appendLog(
+        `Starting Crypto smoke test — global sodium first; CDN fallback ${ALLOW_CDN ? "ENABLED (DEV flag)" : "DISABLED"}`
+      );
 
       // Try to reuse a global sodium if already loaded (e.g. by the page or a runtime loader)
       let sodium: any = (window as any).sodium ?? null;
@@ -45,8 +54,14 @@ export default function CryptoSmoke(): JSX.Element {
         if (sodium && sodium.ready) await sodium.ready;
         appendLog("libsodium ready (global).");
       } else {
-        // Load libsodium-wrappers-sumo via a CDN script at runtime to avoid build-time resolution issues.
-        appendLog("Global sodium not found — loading libsodium-wrappers-sumo from CDN...");
+        // CDN fallback is forbidden unless explicitly enabled in DEV (and never in production).
+        if (!ALLOW_CDN) {
+          throw new Error(
+            "Global sodium not found. CDN fallback is disabled (set NEXT_PUBLIC_SMOKE_ALLOW_CDN=1 in DEV to allow)."
+          );
+        }
+
+        appendLog("Global sodium not found — DEV flag set, loading libsodium-wrappers-sumo from CDN...");
         await new Promise<void>((resolve, reject) => {
           const existing = document.querySelector('script[data-sj-libsodium="true"]');
           if (existing) {
@@ -64,7 +79,7 @@ export default function CryptoSmoke(): JSX.Element {
 
           const script = document.createElement("script");
           // Pin to the exact version we use in the project to avoid mismatch
-          script.src = "https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.7.16/dist/modules-sumo/libsodium-wrappers.js";
+          script.src = LIBSODIUM_CDN;
           script.async = true;
           script.setAttribute("data-sj-libsodium", "true");
           script.onload = () => {

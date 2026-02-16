@@ -85,6 +85,8 @@ export async function encryptFile(
     fileKey?: Uint8Array;
     kek: Uint8Array;
     salt: Uint8Array;
+    walletPubKey: string; // REQUIRED (Protocol V2)
+    fileId?: string; // optional (Protocol V2) — if omitted, generated and stored in EncryptedFile
     filename?: string;
     mimeType?: string;
   }
