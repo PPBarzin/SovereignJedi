@@ -4,6 +4,7 @@
  * Goals:
  * - Provide a small, UI-safe API surface:
  *     - addBytes(bytes) -> { cid, size }
+ *     - catBytes(cid) -> Uint8Array
  *     - addEncryptedPackage(pkg) -> { cid }
  * - Use Helia (IPFS in-browser) with deterministic dev connectivity:
  *     - WebSockets transport
@@ -172,6 +173,34 @@ async function addBytesViaKubo(
   }
 }
 
+async function catBytesViaKubo(cid: string, config?: Partial<IpfsClientConfig>): Promise<Uint8Array> {
+  const baseUrl = getKuboApiUrl()
+  const url = `${baseUrl}/api/v0/cat?arg=${encodeURIComponent(cid)}`
+
+  const controller = new AbortController()
+  const timeoutMs = config?.timeoutMs ?? IPFS_CAT_TIMEOUT_MS
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const res = await fetch(url, { method: 'POST', signal: controller.signal })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Kubo cat failed (${res.status}): ${text}`)
+    }
+
+    const buf = await res.arrayBuffer()
+    const bytes = new Uint8Array(buf)
+
+    if (bytes.byteLength === 0) {
+      throw new Error('Kubo cat returned empty response')
+    }
+
+    return bytes
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function getBootstrapMultiaddrsFromRuntimeOrThrow(): string[] {
   // Prefer runtime configuration over environment variables.
   // Supported sources (in order):
@@ -241,6 +270,7 @@ function toMultiaddrsOrThrow(addrs: string[]): Multiaddr[] {
 }
 
 const IPFS_ADD_TIMEOUT_MS = 30_000
+const IPFS_CAT_TIMEOUT_MS = 30_000
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -352,6 +382,75 @@ export async function addBytes(bytes: Uint8Array, config?: Partial<IpfsClientCon
   debugLog('[IPFS] addBytes ok', { cid: cid.toString() })
 
   return { cid: cid.toString(), size: bytes.byteLength }
+}
+
+/**
+ * catBytes
+ *
+ * Fetches raw bytes for a CID.
+ *
+ * MVP strategy:
+ * - Prefer Kubo HTTP API (default localhost) for deterministic behavior.
+ * - No advanced streaming/chunking; we load the entire response into memory.
+ */
+export async function catBytes(cid: string, config?: Partial<IpfsClientConfig>): Promise<Uint8Array> {
+  if (!cid || String(cid).trim().length === 0) {
+    throw new Error('catBytes: cid must be a non-empty string')
+  }
+
+  // MVP: Kubo-first (deterministic dev behavior)
+  const kuboApi = getKuboApiUrl()
+  if (kuboApi.length > 0) {
+    debugLog('[IPFS] catBytes backend', { backend: 'kubo' })
+    const bytes = await catBytesViaKubo(String(cid).trim(), config)
+    debugLog('[IPFS] catBytes ok', { size: bytes.byteLength })
+    return bytes
+  }
+
+  // Fallback: Helia in-browser
+  debugLog('[IPFS] catBytes backend', { backend: 'helia' })
+  const { fs } = await getIpfsContext(config)
+
+  let parsed: CID
+  try {
+    parsed = CID.parse(String(cid).trim())
+  } catch (e: any) {
+    throw new Error(`catBytes: invalid CID: ${e?.message ?? String(e)}`)
+  }
+
+  const controller = new AbortController()
+  const timeoutMs = config?.timeoutMs ?? IPFS_CAT_TIMEOUT_MS
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const chunks: Uint8Array[] = []
+    let total = 0
+
+    const iter = fs.cat(parsed)
+
+    for await (const chunk of iter) {
+      if (controller.signal.aborted) {
+        throw new Error(`IPFS catBytes timed out after ${timeoutMs}ms`)
+      }
+      const u8 = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk as any)
+      chunks.push(u8)
+      total += u8.byteLength
+    }
+
+    if (total === 0) {
+      throw new Error('catBytes: empty response')
+    }
+
+    const out = new Uint8Array(total)
+    let offset = 0
+    for (const c of chunks) {
+      out.set(c, offset)
+      offset += c.byteLength
+    }
+    return out
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /**

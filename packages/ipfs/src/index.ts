@@ -35,6 +35,7 @@ export type {
 export {
   getIpfsContext,
   addBytes,
+  catBytes,
   addEncryptedPackage,
   resetIpfsContextForTests,
 } from './client'
