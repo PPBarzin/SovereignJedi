@@ -43,6 +43,7 @@
 
   "references": [
     { "path": "packages/crypto" },
+    { "path": "packages/ipfs" },
     { "path": "packages/storage" },
     { "path": "apps/web" }
   ]

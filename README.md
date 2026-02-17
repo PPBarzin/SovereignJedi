@@ -18,6 +18,7 @@ Objectif: livrer une expérience “data souveraine” côté utilisateur, avec 
 
 - apps/web — application Next.js (UI)
 - packages/crypto — `@sj/crypto` (helpers crypto)
+- packages/ipfs — `@sj/ipfs` (abstraction Helia/libp2p pour upload de packages chiffres)
 - packages/storage — `@sj/storage` (abstraction IndexedDB chiffrée)
 - infra/ipfs — docker-compose pour un nœud IPFS local (optionnel pour le mock)
 - docs/tasks — documentation par task (ex: task-02.md)
@@ -67,7 +68,7 @@ Prérequis (résumé):
 
 ---
 
-## UI — état actuel (Task 2 + 2.5 appliquées)
+## UI — état actuel (Task 5 incluse)
 
 - Header: statut wallet (mock) + toggle thème (☀️/🌙, persisté)
 - Left panel (filters): All files, Shared with me, Private, Project X, Invoices
@@ -82,8 +83,15 @@ Prérequis (résumé):
 - Hydratation Next.js stabilisée:
   - Rendu UI post-mount + suppressHydrationWarning sur les dates
 
-Scope mock:
-- Pas d’IPFS/chiffrement/wallet réels (hors périmètre Task 2/2.5)
+Upload IPFS (MVP):
+- Gating strict: upload autorisé uniquement si `IdentityVerified=true` et `VaultUnlocked=true`
+- Limite taille: `100MB` (blocage UI)
+- Upload de package chiffré vers IPFS via `@sj/ipfs` (Kubo HTTP API en mode principal, Helia en fallback), avec calcul SHA-256 local du package
+- Affichage du CID après succès
+- Backend Kubo (HTTP API): `http://127.0.0.1:5001` (configurable côté site via `apps/web/pages/_document.tsx` -> `kuboApiBaseUrl`)
+- CORS: origine autorisée configurable (par défaut `http://localhost:1620` dans `infra/ipfs/docker-compose.yml`, variable `SJ_APP_ORIGIN`)
+- Bootstrap Helia (fallback): multiaddrs CSV (config runtime), ex:
+  - `/ip4/127.0.0.1/tcp/15002/ws/p2p/<PEER_ID>`
 
 ---
 
@@ -156,4 +164,3 @@ Les IDs peuvent être référencées dans:
 - packages/crypto — helpers crypto
 - packages/storage — abstraction IndexedDB chiffrée
 - infra/ipfs — docker-compose IPFS (optionnel)
-

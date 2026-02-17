@@ -22,12 +22,31 @@ services:
     environment:
       # Use the 'server' profile to disable UI and enable sensible defaults for a node
       - IPFS_PROFILE=server
+      # Allowed web app origin for Kubo CORS (update if UI runs elsewhere)
+      - SJ_APP_ORIGIN=http://localhost:1620
+    command: >
+      sh -lc '
+        set -e;
+
+        # Init repo if first run (volume empty)
+        if [ ! -f /data/ipfs/config ]; then
+          ipfs init --profile=server >/dev/null
+        fi
+
+        # CORS for browser -> Kubo API (idempotent)
+        ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"${SJ_APP_ORIGIN}\"]"
+        ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods "[\"POST\",\"OPTIONS\"]"
+        ipfs config --json API.HTTPHeaders.Access-Control-Allow-Headers "[\"Content-Type\"]"
+        ipfs config --json API.HTTPHeaders.Access-Control-Allow-Credentials "[\"true\"]"
+
+        exec ipfs daemon --migrate=true --enable-gc
+      '
     # Optional healthcheck to ensure the API is responding
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "wget -q -O - http://127.0.0.1:5001/api/v0/version || exit 1",
+          "ipfs --api /ip4/127.0.0.1/tcp/5001 version >/dev/null 2>&1 || exit 1",
         ]
       interval: 10s
       timeout: 5s

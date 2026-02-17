@@ -10,6 +10,12 @@ import ProtectedAction from '../src/components/wallet/ui/ProtectedAction'
 import useSession from '../src/lib/session/useSession'
 import { loadIdentity, isVerified } from '../src/components/wallet/types'
 import { canPerformVaultActions } from '../src/lib/session/vaultGuards'
+import {
+  MAX_MVP_FILE_BYTES,
+  uploadEncryptedToIpfsOrThrow,
+} from '../src/lib/ipfs/uploadEncryptedToIpfs'
+
+const SJ_DEBUG = process.env.NEXT_PUBLIC_SJ_DEBUG === "true"
 
 /**
  * Task 2.5 — UI Mock (Product-like)
@@ -209,6 +215,8 @@ export default function Home(): JSX.Element {
 
   // Drag & Drop (main overlay)
   const [uiFlow, setUiFlow] = useState<UiFlow>('idle')
+  const [lastUploadedCid, setLastUploadedCid] = useState<string | null>(null)
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const dragCounter = useRef(0)
 
@@ -241,7 +249,7 @@ export default function Home(): JSX.Element {
         window.alert('Upload denied — you must both (1) Verify identity (Sign to Verify) and (2) Unlock Vault (Unlock Vault) before uploading.')
         return
       }
-      handleFile(f)
+      void handleFile(f)
     } else setUiFlow('idle')
   }, [session])
 
@@ -256,12 +264,15 @@ export default function Home(): JSX.Element {
   }, [session])
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
-    if (f) handleFile(f)
+    if (f) void handleFile(f)
     e.currentTarget.value = ''
   }, [])
 
-  // Simulate processing of a file drop / selection
-  const handleFile = useCallback((file: File) => {
+  // Upload flow (Task 5): encrypt locally -> hash -> upload encrypted package to IPFS.
+  const handleFile = useCallback(async (file: File) => {
+    if (SJ_DEBUG) {
+      console.debug('[IPFS:UI] handleFile start')
+    }
     // Upload gating: require both IdentityVerified and VaultUnlocked before accepting files
     if (!canPerformVaultActions()) {
       setUiFlow('idle')
@@ -270,8 +281,15 @@ export default function Home(): JSX.Element {
       return
     }
 
+    if (file.size > MAX_MVP_FILE_BYTES) {
+      setUiFlow('error')
+      setUploadErrorMessage('Fichier trop volumineux (max 100MB pour le MVP).')
+      return
+    }
+
     // enter loading
     setUiFlow('loading')
+    setUploadErrorMessage(null)
     const id = `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     const base: FileItem = {
       id,
@@ -282,28 +300,47 @@ export default function Home(): JSX.Element {
       dateISO: new Date().toISOString(),
       sharedWith: [],
       tags: [],
-      cid: mockCid(),
+      cid: '',
     }
     setFiles((prev) => [base, ...prev])
 
-    const ms = randInt(900, 1800)
-    const willShare = Math.random() < 0.25
-    window.setTimeout(() => {
+    try {
+      const walletPubKey = session.walletPubKey
+      if (!walletPubKey) {
+        throw new Error('Wallet non connecté.')
+      }
+
+      if (SJ_DEBUG) {
+        console.debug('[IPFS:UI] upload start')
+      }
+      const { cid } = await uploadEncryptedToIpfsOrThrow(file, walletPubKey)
+      if (SJ_DEBUG) {
+        console.debug('[IPFS:UI] upload ok', { cid })
+      }
+      setLastUploadedCid(cid)
+
       setFiles((prev) =>
         prev.map((it) =>
           it.id === id
             ? {
                 ...it,
-                status: willShare ? 'Shared' : 'Ready',
-                sharedWith: willShare ? ['demo-user.sol'] : [],
+                status: 'Ready',
+                sharedWith: [],
+                cid,
               }
             : it,
         ),
       )
       setUiFlow('success')
-      // brief success state then back to idle
       window.setTimeout(() => setUiFlow('idle'), 1000)
-    }, ms)
+    } catch (error: any) {
+      if (SJ_DEBUG) {
+        console.debug('[IPFS:UI] handleFile error', { message: error?.message })
+      }
+      setUiFlow('error')
+      setUploadErrorMessage(error?.message ?? 'Erreur lors de l-upload IPFS.')
+      setFiles((prev) => prev.filter((it) => it.id !== id))
+    }
   }, [session])
 
   // Filtering logic
@@ -502,13 +539,18 @@ export default function Home(): JSX.Element {
               {uiFlow === 'success' && (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, border: `1px solid ${theme === 'light' ? '#a7f3d0' : '#134e4a'}`, background: theme === 'light' ? '#ecfdf5' : '#052e2b', color: t.ok, fontWeight: 700, fontSize: 12, marginTop: 8 }}>
                   <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: t.ok, display: 'inline-block' }} />
-                  File added
+                  Stocke sur IPFS
                 </div>
               )}
               {uiFlow === 'error' && (
                 <div role="alert" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, border: `1px solid ${theme === 'light' ? '#fecaca' : '#7f1d1d'}`, background: theme === 'light' ? '#fef2f2' : '#2b0b0b', color: t.danger, fontWeight: 700, fontSize: 12, marginTop: 8 }}>
                   <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: t.danger, display: 'inline-block' }} />
-                  Something went wrong
+                  {uploadErrorMessage ?? 'Something went wrong'}
+                </div>
+              )}
+              {lastUploadedCid && (
+                <div style={{ marginTop: 10, fontSize: 12, color: t.subtext, maxWidth: 540, textAlign: 'center' }}>
+                  CID: <code style={{ color: t.text }}>{lastUploadedCid}</code>
                 </div>
               )}
             </div>

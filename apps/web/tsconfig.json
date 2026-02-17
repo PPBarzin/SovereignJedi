@@ -20,6 +20,8 @@
     "paths": {
       "@sj/crypto": ["../../packages/crypto/dist"],
       "@sj/crypto/*": ["../../packages/crypto/dist/*"],
+      "@sj/ipfs": ["../../packages/ipfs/dist"],
+      "@sj/ipfs/*": ["../../packages/ipfs/dist/*"],
       "@sj/storage": ["../../packages/storage/dist"],
       "@sj/storage/*": ["../../packages/storage/dist/*"]
     }

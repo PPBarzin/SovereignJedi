@@ -42,6 +42,7 @@
      `globalThis.sodium` or otherwise make `libsodium-wrappers-sumo` available at runtime. If absent,
      the underlying implementation will fail hard (throw).
 */
+import type { EncryptedFile, Envelope, UnlockMessageV1, BuildUnlockResult } from './v0_local_encryption/types';
 export type { EncryptedFile, Envelope, UnlockMessageV1, BuildUnlockResult } from './v0_local_encryption/types';
 
 /**

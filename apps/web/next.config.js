@@ -11,6 +11,9 @@
  *   builds later, remove or toggle `ignoreDuringBuilds`.
  * - This file lives in apps/web and affects only that Next.js app.
  */
+const path = require('path')
+const libsodiumEntry = require.resolve('libsodium')
+const libsodiumRoot = path.dirname(libsodiumEntry)
 
 module.exports = {
   // Prevent Next from failing builds due to ESLint issues.
@@ -22,4 +25,17 @@ module.exports = {
   // Common Next.js defaults helpful for stability (can be adjusted later)
   reactStrictMode: true,
   swcMinify: true,
+  experimental: {
+    externalDir: true,
+  },
+  transpilePackages: ['@sj/crypto', '@sj/ipfs'],
+
+  webpack: (config) => {
+    config.resolve = config.resolve || {}
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      './libsodium.mjs': path.resolve(libsodiumRoot, '../modules-esm/libsodium.mjs'),
+    }
+    return config
+  },
 }

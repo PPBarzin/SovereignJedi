@@ -97,7 +97,11 @@ function fromBase64(s: string): Uint8Array {
 
 function canonicalizeJSON(obj: object): string {
   // The `canonicalize` import MUST implement RFC 8785 (JCS) and return the canonical string.
-  return canonicalize(obj);
+  const result = canonicalize(obj);
+  if (typeof result !== 'string') {
+    throw new Error('Canonicalization failed: canonicalize() did not return a string');
+  }
+  return result;
 }
 
 /* -------------------------
@@ -225,8 +229,8 @@ async function getSodium(): Promise<any> {
   }
 
   try {
-    // Only attempt the sumo build. This package is required for Task 4.
-    const mod = await import('libsodium-wrappers-sumo');
+    // Prefer the standard build for broader bundler compatibility.
+    const mod = await import('libsodium-wrappers');
     const sodium = (mod && (mod as any).default) ? (mod as any).default : mod;
     if (sodium && sodium.ready) {
       await sodium.ready;
@@ -234,9 +238,11 @@ async function getSodium(): Promise<any> {
     return sodium;
   } catch (err) {
     // Fail hard and give actionable error message.
+    const message =
+      (err && typeof (err as any).message === 'string' && (err as any).message) || String(err);
     throw new Error(
-      'libsodium-wrappers-sumo is required but could not be loaded. Install and ensure the runtime can resolve "libsodium-wrappers-sumo". Original error: ' +
-        (err && err.message ? err.message : String(err))
+      'libsodium-wrappers is required but could not be loaded. Install and ensure the runtime can resolve "libsodium-wrappers". Original error: ' +
+        message
     );
   }
 }

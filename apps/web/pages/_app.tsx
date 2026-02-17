@@ -55,7 +55,53 @@ export default function App({ Component, pageProps }: AppProps) {
     return [new PhantomWalletAdapter()]
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if ((window as any).sodium && (window as any).sodium.ready) {
+      void (window as any).sodium.ready.catch(() => {})
+      return
+    }
 
+    const sumoSrc = '/libsodium/libsodium-sumo.js'
+    const wrappersSrc = '/libsodium/libsodium-wrappers.js'
+
+    const injectScript = (src: string, attr: string) =>
+      new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector(`script[${attr}="true"]`) as HTMLScriptElement | null
+        if (existing) {
+          if (existing.dataset.sjLoaded === '1') {
+            resolve()
+            return
+          }
+          existing.addEventListener('load', () => resolve(), { once: true })
+          existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true })
+          return
+        }
+
+        const script = document.createElement('script')
+        script.src = src
+        script.async = true
+        script.setAttribute(attr, 'true')
+        script.onload = () => {
+          script.dataset.sjLoaded = '1'
+          resolve()
+        }
+        script.onerror = () => reject(new Error(`Failed to load ${src}`))
+        document.head.appendChild(script)
+      })
+
+    void (async () => {
+      try {
+        await injectScript(sumoSrc, 'data-sj-libsodium-sumo')
+        await injectScript(wrappersSrc, 'data-sj-libsodium-wrappers')
+        if ((window as any).sodium && (window as any).sodium.ready) {
+          await (window as any).sodium.ready
+        }
+      } catch (e) {
+        console.error('[crypto] libsodium preload failed', e)
+      }
+    })()
+  }, [])
 
   return (
     <ConnectionProvider endpoint={endpoint}>
