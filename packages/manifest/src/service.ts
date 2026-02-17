@@ -72,7 +72,13 @@ function toBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64')
   // browser fallback
   let binary = ''
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i]
+    if (b == null) {
+      throw new Error('toBase64: unexpected undefined byte (noUncheckedIndexedAccess)')
+    }
+    binary += String.fromCharCode(b)
+  }
   // eslint-disable-next-line no-undef
   return btoa(binary)
 }
@@ -576,15 +582,23 @@ export async function appendEntryAndPersist(params: {
     const addedAt = params.entry.addedAt ?? deps.nowIso()
     const entryId = params.entry.entryId ?? deps.uuid()
 
-    const newEntry: ManifestEntryV1 = {
+    const newEntryBase = {
       entryId,
       fileCid: params.entry.fileCid,
       addedAt,
-      originalFileName: params.entry.originalFileName,
-      mimeType: params.entry.mimeType,
-      fileSize: params.entry.fileSize,
       envelope: params.entry.envelope,
-      fileIntegritySha256B64: params.entry.fileIntegritySha256B64,
+    } as const
+
+    // IMPORTANT (exactOptionalPropertyTypes):
+    // Only include optional fields when they are actually defined.
+    const newEntry: ManifestEntryV1 = {
+      ...newEntryBase,
+      ...(params.entry.originalFileName !== undefined ? { originalFileName: params.entry.originalFileName } : {}),
+      ...(params.entry.mimeType !== undefined ? { mimeType: params.entry.mimeType } : {}),
+      ...(params.entry.fileSize !== undefined ? { fileSize: params.entry.fileSize } : {}),
+      ...(params.entry.fileIntegritySha256B64 !== undefined
+        ? { fileIntegritySha256B64: params.entry.fileIntegritySha256B64 }
+        : {}),
     }
 
     if (!newEntry.fileCid || String(newEntry.fileCid).trim().length === 0) {

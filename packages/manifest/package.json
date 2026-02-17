@@ -15,7 +15,8 @@
   "dependencies": {
     "@sj/crypto": "workspace:*",
     "@sj/ipfs": "workspace:*",
-    "canonicalize": "^1.0.0"
+    "canonicalize": "^1.0.0",
+    "libsodium-wrappers": "^0.7.16"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

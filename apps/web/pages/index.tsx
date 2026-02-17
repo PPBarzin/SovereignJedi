@@ -8,12 +8,16 @@ import IdentityStatus from '../src/components/wallet/IdentityStatus'
 import UnlockVaultButton from '../src/components/wallet/ui/UnlockVaultButton'
 import ProtectedAction from '../src/components/wallet/ui/ProtectedAction'
 import useSession from '../src/lib/session/useSession'
-import { loadIdentity, isVerified } from '../src/components/wallet/types'
+import { loadIdentity } from '../src/components/wallet/types'
+import { decodeSignature } from '../src/components/wallet/utils'
 import { canPerformVaultActions } from '../src/lib/session/vaultGuards'
 import {
   MAX_MVP_FILE_BYTES,
   uploadEncryptedToIpfsOrThrow,
 } from '../src/lib/ipfs/uploadEncryptedToIpfs'
+
+import type { ManifestEntryV1 } from '@sj/manifest'
+import { loadManifestOrInit, appendEntryAndPersist } from '@sj/manifest'
 
 const SJ_DEBUG = process.env.NEXT_PUBLIC_SJ_DEBUG === "true"
 
@@ -86,7 +90,7 @@ type FileItem = {
   dateISO: string
   sharedWith: string[]
   tags: string[]
-  cid: string // only surfaced in the properties panel
+  cid: string // IPFS CID of the encrypted package (Task 5), surfaced in properties panel only
 }
 
 type UiFlow = 'idle' | 'drag-over' | 'loading' | 'success' | 'error'
@@ -99,21 +103,7 @@ const formatBytes = (n: number) => {
   return `${(n / Math.pow(k, i)).toFixed(1)} ${units[i]}`
 }
 
-const randInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1))
-const choice = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
 
-const mockCid = () => {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz234567'
-  const rand = (n: number) =>
-    Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')
-  return `bafy${rand(10)}${rand(10)}${rand(4)}`
-}
-
-const mockWalletAddr = () => {
-  const al = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-  const rand = (n: number) => Array.from({ length: n }, () => al[Math.floor(Math.random() * al.length)]).join('')
-  return `${rand(4)}...${rand(4)}`
-}
 
 /* ---------------------------------- */
 /* Component                                                               */
@@ -143,75 +133,15 @@ export default function Home(): JSX.Element {
   // Session integration (Task 3.5)
   const session = useSession()
 
-  // Wallet mock
-  const [walletConnected, setWalletConnected] = useState(false)
-  const [walletAddress, setWalletAddress] = useState<string | null>(null)
-  const toggleWallet = useCallback(() => {
-    setWalletConnected((v) => {
-      if (v) {
-        setWalletAddress(null)
-        return false
-      } else {
-        setWalletAddress(mockWalletAddr())
-        return true
-      }
-    })
-  }, [])
+  // Wallet mock (removed): app uses real wallet session state via `useSession()` and wallet components.
 
   // Filters (left panel)
   type FilterKey = 'all' | 'shared' | 'private' | 'projectX' | 'invoices'
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
 
-  // Mocked files dataset
-  const [files, setFiles] = useState<FileItem[]>(() => {
-    const seed: FileItem[] = [
-      {
-        id: 'f-1',
-        name: 'product-vision.pdf',
-        sizeBytes: 350_000,
-        sizeText: formatBytes(350_000),
-        status: 'Ready',
-        dateISO: new Date(Date.now() - 86400000 * 4).toISOString(),
-        sharedWith: [],
-        tags: ['projectX'],
-        cid: mockCid(),
-      },
-      {
-        id: 'f-2',
-        name: 'invoice-2025-0007.pdf',
-        sizeBytes: 120_000,
-        sizeText: formatBytes(120_000),
-        status: 'Shared',
-        dateISO: new Date(Date.now() - 86400000 * 2).toISOString(),
-        sharedWith: ['alice.sol'],
-        tags: ['invoices'],
-        cid: mockCid(),
-      },
-      {
-        id: 'f-3',
-        name: 'screenshot.png',
-        sizeBytes: 2_340_000,
-        sizeText: formatBytes(2_340_000),
-        status: 'Ready',
-        dateISO: new Date(Date.now() - 3600_000 * 15).toISOString(),
-        sharedWith: [],
-        tags: [],
-        cid: mockCid(),
-      },
-      {
-        id: 'f-4',
-        name: 'project-x-notes.md',
-        sizeBytes: 42_000,
-        sizeText: formatBytes(42_000),
-        status: 'Pending',
-        dateISO: new Date(Date.now() - 3600_000 * 2).toISOString(),
-        sharedWith: [],
-        tags: ['projectX'],
-        cid: mockCid(),
-      },
-    ]
-    return seed
-  })
+  // Manifest-backed files dataset (Task 6)
+  const [files, setFiles] = useState<FileItem[]>([])
+  const [manifestErrorMessage, setManifestErrorMessage] = useState<string | null>(null)
 
   // Drag & Drop (main overlay)
   const [uiFlow, setUiFlow] = useState<UiFlow>('idle')
@@ -268,7 +198,59 @@ export default function Home(): JSX.Element {
     e.currentTarget.value = ''
   }, [])
 
-  // Upload flow (Task 5): encrypt locally -> hash -> upload encrypted package to IPFS.
+  const refreshFromManifest = useCallback(async () => {
+    const walletPubKey = session.walletPubKey
+    if (!walletPubKey) {
+      setFiles([])
+      setManifestErrorMessage(null)
+      return
+    }
+    if (!canPerformVaultActions()) {
+      // Not unlocked/verified yet; don't attempt to decrypt manifest
+      setFiles([])
+      setManifestErrorMessage(null)
+      return
+    }
+
+    try {
+      const identity = loadIdentity()
+      const signature = identity?.signature
+      if (!signature) {
+        throw new Error('Signature de preuve introuvable. Re-vérifie ton wallet.')
+      }
+      const signatureBytes = decodeSignature(signature)
+
+      const { manifest } = await loadManifestOrInit({
+        walletPubKey,
+        signatureBytes,
+        origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
+        vaultId: 'local-default',
+      })
+
+      const mapped: FileItem[] = (manifest.entries ?? []).map((e: ManifestEntryV1) => ({
+        id: e.entryId,
+        name: e.originalFileName ?? '(unknown)',
+        sizeBytes: e.fileSize ?? 0,
+        sizeText: formatBytes(e.fileSize ?? 0),
+        status: 'Ready',
+        dateISO: e.addedAt,
+        sharedWith: [],
+        tags: [],
+        cid: e.fileCid,
+      }))
+
+      setFiles(mapped)
+      setManifestErrorMessage(null)
+    } catch (error: any) {
+      setManifestErrorMessage(error?.message ?? 'Impossible de charger le manifest.')
+    }
+  }, [session])
+
+  useEffect(() => {
+    void refreshFromManifest()
+  }, [refreshFromManifest])
+
+  // Upload flow (Task 5 + Task 6): encrypt locally -> hash -> upload encrypted package -> append entry -> persist manifest.
   const handleFile = useCallback(async (file: File) => {
     if (SJ_DEBUG) {
       console.debug('[IPFS:UI] handleFile start')
@@ -290,19 +272,6 @@ export default function Home(): JSX.Element {
     // enter loading
     setUiFlow('loading')
     setUploadErrorMessage(null)
-    const id = `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-    const base: FileItem = {
-      id,
-      name: file.name,
-      sizeBytes: file.size,
-      sizeText: formatBytes(file.size),
-      status: 'Pending',
-      dateISO: new Date().toISOString(),
-      sharedWith: [],
-      tags: [],
-      cid: '',
-    }
-    setFiles((prev) => [base, ...prev])
 
     try {
       const walletPubKey = session.walletPubKey
@@ -310,27 +279,42 @@ export default function Home(): JSX.Element {
         throw new Error('Wallet non connecté.')
       }
 
+      const identity = loadIdentity()
+      const signature = identity?.signature
+      if (!signature) {
+        throw new Error('Signature de preuve introuvable. Re-vérifie ton wallet.')
+      }
+      const signatureBytes = decodeSignature(signature)
+
       if (SJ_DEBUG) {
         console.debug('[IPFS:UI] upload start')
       }
-      const { cid } = await uploadEncryptedToIpfsOrThrow(file, walletPubKey)
+      const { cid, object } = await uploadEncryptedToIpfsOrThrow(file, walletPubKey)
       if (SJ_DEBUG) {
         console.debug('[IPFS:UI] upload ok', { cid })
       }
       setLastUploadedCid(cid)
 
-      setFiles((prev) =>
-        prev.map((it) =>
-          it.id === id
-            ? {
-                ...it,
-                status: 'Ready',
-                sharedWith: [],
-                cid,
-              }
-            : it,
-        ),
-      )
+      // Append to encrypted manifest (Task 6)
+      const entry: Omit<ManifestEntryV1, 'addedAt' | 'entryId'> = {
+        fileCid: cid,
+        envelope: object.envelope as any,
+        originalFileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+      }
+
+      await appendEntryAndPersist({
+        walletPubKey,
+        signatureBytes,
+        entry,
+        origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
+        vaultId: 'local-default',
+      })
+
+      // Refresh UI from manifest (source of truth)
+      await refreshFromManifest()
+
       setUiFlow('success')
       window.setTimeout(() => setUiFlow('idle'), 1000)
     } catch (error: any) {
@@ -338,10 +322,9 @@ export default function Home(): JSX.Element {
         console.debug('[IPFS:UI] handleFile error', { message: error?.message })
       }
       setUiFlow('error')
-      setUploadErrorMessage(error?.message ?? 'Erreur lors de l-upload IPFS.')
-      setFiles((prev) => prev.filter((it) => it.id !== id))
+      setUploadErrorMessage(error?.message ?? 'Erreur lors de l-upload IPFS / manifest.')
     }
-  }, [session])
+  }, [session, refreshFromManifest])
 
   // Filtering logic
   const filtered = useMemo(() => {
@@ -559,7 +542,24 @@ export default function Home(): JSX.Element {
           {/* Hidden input */}
           <input ref={fileInputRef} type="file" onChange={onInputChange} style={{ display: 'none' }} />
 
-          {/* File list (no CID here) */}
+          {/* File list (manifest-backed; no CID here) */}
+          {manifestErrorMessage && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 12,
+                border: `1px solid ${theme === 'light' ? '#fecaca' : '#7f1d1d'}`,
+                background: theme === 'light' ? '#fef2f2' : '#2b0b0b',
+                color: t.danger,
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >
+              {manifestErrorMessage}
+            </div>
+          )}
 
           <div
             style={{
@@ -727,7 +727,7 @@ export default function Home(): JSX.Element {
 
               <div style={{ height: 1, background: t.border, margin: '8px 0' }} />
 
-              <Field label="CID (mock)">
+              <Field label="CID">
                 <code
                   style={{
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',

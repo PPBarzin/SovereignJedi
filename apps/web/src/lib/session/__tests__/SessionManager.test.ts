@@ -76,7 +76,7 @@ describe("SessionManager (Task 3.5) - unit tests", () => {
     // @ts-ignore
     const raw = globalThis.localStorage.getItem("sj_verified_v1");
     expect(raw).not.toBeNull();
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw as string);
     expect(parsed.walletPubKey).toBe(pubKey);
   });
 

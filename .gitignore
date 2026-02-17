@@ -5,7 +5,26 @@
 # - keep the repository clean while allowing required config (e.g. committed .npmrc) if needed
 #
 # Node / package managers
-node_modules/
+node_modules
+
+# --- Build artifacts (monorepo) ---
+dist
+**/dist
+*.tsbuildinfo
+
+# TypeScript build outputs that should never be committed
+*.d.ts.map
+*.js.map
+
+# Task 6 / manifest build outputs (and any package build outputs)
+packages/**/src/**/*.d.ts
+packages/**/src/**/*.d.ts.map
+packages/**/src/**/*.js
+packages/**/src/**/*.js.map
+
+# Next.js / web build outputs
+.next
+out
 .pnp/
 .pnp.js
 # pnpm store and debug logs

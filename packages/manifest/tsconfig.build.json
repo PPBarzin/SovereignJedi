@@ -2,7 +2,21 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "emitDeclarationOnly": false
+    "emitDeclarationOnly": false,
+
+    // Build this package in isolation: do not pull in workspace dependency source files.
+    // This prevents TS from trying to compile @sj/crypto/@sj/ipfs source trees under this project's rootDir.
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@sj/crypto": ["../crypto/dist/index.d.ts"],
+      "@sj/crypto/*": ["../crypto/dist/*"],
+      "@sj/ipfs": ["../ipfs/dist/index.d.ts"],
+      "@sj/ipfs/*": ["../ipfs/dist/*"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": [

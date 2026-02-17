@@ -66,6 +66,9 @@ importers:
       '@sj/ipfs':
         specifier: workspace:*
         version: link:../../packages/ipfs
+      '@sj/manifest':
+        specifier: workspace:*
+        version: link:../../packages/manifest
       '@solana/wallet-adapter-base':
         specifier: ^0.9.27
         version: 0.9.27(@solana/web3.js@1.98.4)
@@ -207,6 +210,9 @@ importers:
       canonicalize:
         specifier: ^1.0.0
         version: 1.0.8
+      libsodium-wrappers:
+        specifier: ^0.7.16
+        version: 0.7.16
     devDependencies:
       typescript:
         specifier: ^5.0.0
