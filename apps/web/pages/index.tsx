@@ -1,21 +1,57 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-// Wallet providers are configured globally in `pages/_app.tsx` (ConnectionProvider + WalletProvider + WalletModalProvider)
+// Wallet providers are configured globally in `pages/_app.tsx` (ConnectionProvider + WalletProvider + WalletProvider + WalletModalProvider)
 import ConnectWallet from '../src/components/wallet/ConnectWallet'
 import VerifyWallet from '../src/components/wallet/VerifyWallet'
 import IdentityStatus from '../src/components/wallet/IdentityStatus'
 import UnlockVaultButton from '../src/components/wallet/ui/UnlockVaultButton'
 import ProtectedAction from '../src/components/wallet/ui/ProtectedAction'
 import useSession from '../src/lib/session/useSession'
-import { loadIdentity, isVerified } from '../src/components/wallet/types'
-import { canPerformVaultActions } from '../src/lib/session/vaultGuards'
+// NOTE: We intentionally do NOT use vaultGuards singleton here for runtime gating.
+// This page gates actions using ONLY the local `useSession()` snapshot to avoid race conditions.
 import {
   MAX_MVP_FILE_BYTES,
   uploadEncryptedToIpfsOrThrow,
 } from '../src/lib/ipfs/uploadEncryptedToIpfs'
 
+import type { ManifestEntryV1 } from '@sj/manifest'
+import { loadManifestOrInit, appendEntryAndPersist, getManifestCid as getManifestCidPointer } from '@sj/manifest'
+
+import { session as sessionSingleton } from '../src/lib/session/SessionManager'
+
 const SJ_DEBUG = process.env.NEXT_PUBLIC_SJ_DEBUG === "true"
+
+function debugLog(message: string, data?: Record<string, unknown>): void {
+  if (!SJ_DEBUG) return
+  try {
+    console.debug(message, data ?? {})
+  } catch {
+    // ignore
+  }
+}
+
+function shortStackTrace(skipLines = 2, maxLines = 6): string[] {
+  try {
+    const raw = new Error().stack ?? ''
+    const lines = raw
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+    return lines.slice(skipLines, skipLines + maxLines)
+  } catch {
+    return []
+  }
+}
+
+function safeGetManifestCid(walletPubKey: string | null): string | null {
+  try {
+    if (!walletPubKey) return null
+    return getManifestCidPointer(walletPubKey)
+  } catch {
+    return null
+  }
+}
 
 /**
  * Task 2.5 — UI Mock (Product-like)
@@ -86,7 +122,7 @@ type FileItem = {
   dateISO: string
   sharedWith: string[]
   tags: string[]
-  cid: string // only surfaced in the properties panel
+  cid: string // IPFS CID of the encrypted package (Task 5), surfaced in properties panel only
 }
 
 type UiFlow = 'idle' | 'drag-over' | 'loading' | 'success' | 'error'
@@ -99,21 +135,7 @@ const formatBytes = (n: number) => {
   return `${(n / Math.pow(k, i)).toFixed(1)} ${units[i]}`
 }
 
-const randInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1))
-const choice = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
 
-const mockCid = () => {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz234567'
-  const rand = (n: number) =>
-    Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')
-  return `bafy${rand(10)}${rand(10)}${rand(4)}`
-}
-
-const mockWalletAddr = () => {
-  const al = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-  const rand = (n: number) => Array.from({ length: n }, () => al[Math.floor(Math.random() * al.length)]).join('')
-  return `${rand(4)}...${rand(4)}`
-}
 
 /* ---------------------------------- */
 /* Component                                                               */
@@ -143,75 +165,15 @@ export default function Home(): JSX.Element {
   // Session integration (Task 3.5)
   const session = useSession()
 
-  // Wallet mock
-  const [walletConnected, setWalletConnected] = useState(false)
-  const [walletAddress, setWalletAddress] = useState<string | null>(null)
-  const toggleWallet = useCallback(() => {
-    setWalletConnected((v) => {
-      if (v) {
-        setWalletAddress(null)
-        return false
-      } else {
-        setWalletAddress(mockWalletAddr())
-        return true
-      }
-    })
-  }, [])
+  // Wallet mock (removed): app uses real wallet session state via `useSession()` and wallet components.
 
   // Filters (left panel)
   type FilterKey = 'all' | 'shared' | 'private' | 'projectX' | 'invoices'
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
 
-  // Mocked files dataset
-  const [files, setFiles] = useState<FileItem[]>(() => {
-    const seed: FileItem[] = [
-      {
-        id: 'f-1',
-        name: 'product-vision.pdf',
-        sizeBytes: 350_000,
-        sizeText: formatBytes(350_000),
-        status: 'Ready',
-        dateISO: new Date(Date.now() - 86400000 * 4).toISOString(),
-        sharedWith: [],
-        tags: ['projectX'],
-        cid: mockCid(),
-      },
-      {
-        id: 'f-2',
-        name: 'invoice-2025-0007.pdf',
-        sizeBytes: 120_000,
-        sizeText: formatBytes(120_000),
-        status: 'Shared',
-        dateISO: new Date(Date.now() - 86400000 * 2).toISOString(),
-        sharedWith: ['alice.sol'],
-        tags: ['invoices'],
-        cid: mockCid(),
-      },
-      {
-        id: 'f-3',
-        name: 'screenshot.png',
-        sizeBytes: 2_340_000,
-        sizeText: formatBytes(2_340_000),
-        status: 'Ready',
-        dateISO: new Date(Date.now() - 3600_000 * 15).toISOString(),
-        sharedWith: [],
-        tags: [],
-        cid: mockCid(),
-      },
-      {
-        id: 'f-4',
-        name: 'project-x-notes.md',
-        sizeBytes: 42_000,
-        sizeText: formatBytes(42_000),
-        status: 'Pending',
-        dateISO: new Date(Date.now() - 3600_000 * 2).toISOString(),
-        sharedWith: [],
-        tags: ['projectX'],
-        cid: mockCid(),
-      },
-    ]
-    return seed
-  })
+  // Manifest-backed files dataset (Task 6)
+  const [files, setFiles] = useState<FileItem[]>([])
+  const [manifestErrorMessage, setManifestErrorMessage] = useState<string | null>(null)
 
   // Drag & Drop (main overlay)
   const [uiFlow, setUiFlow] = useState<UiFlow>('idle')
@@ -242,42 +204,276 @@ export default function Home(): JSX.Element {
     dragCounter.current = 0
     const f = e.dataTransfer?.files?.[0]
     if (f) {
-      // Gate uploads: require both IdentityVerified AND VaultUnlocked
-      if (!canPerformVaultActions()) {
+      // Gate uploads using ONLY the local `useSession()` snapshot (avoid vaultGuards singleton here).
+      if (!session.walletPubKey || !session.verified || !session.isVaultUnlocked) {
         setUiFlow('idle')
-        // Give actionable guidance to the user
         window.alert('Upload denied — you must both (1) Verify identity (Sign to Verify) and (2) Unlock Vault (Unlock Vault) before uploading.')
         return
       }
       void handleFile(f)
     } else setUiFlow('idle')
-  }, [session])
+  }, [session.walletPubKey, session.verified, session.isVaultUnlocked])
 
   const openPicker = useCallback(() => {
     // Require both IdentityVerified and VaultUnlocked before allowing file selection
-    if (!canPerformVaultActions()) {
-      // Minimal UX feedback: block the picker and prompt the user
+    // Gate using ONLY the local `useSession()` snapshot (avoid vaultGuards singleton here).
+    if (!session.walletPubKey || !session.verified || !session.isVaultUnlocked) {
       window.alert('Selection denied — Verify identity and Unlock Vault before selecting files.')
       return
     }
     fileInputRef.current?.click()
-  }, [session])
+  }, [session.walletPubKey, session.verified, session.isVaultUnlocked])
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    // IMPORTANT:
+    // Avoid referencing `handleFile` before its declaration (TS temporal dead-zone).
+    // We inline the logic here so the handler always uses the current closure values.
     const f = e.target.files?.[0]
-    if (f) void handleFile(f)
+    if (f) {
+      // Gate uploads using ONLY the local `useSession()` snapshot (avoid vaultGuards singleton here).
+      if (!session.walletPubKey || !session.verified || !session.isVaultUnlocked) {
+        setUiFlow('idle')
+        window.alert(
+          'Upload denied — you must both (1) Verify identity (Sign to Verify) and (2) Unlock Vault (Unlock Vault) before uploading.'
+        )
+      } else {
+        void handleFile(f)
+      }
+    }
     e.currentTarget.value = ''
-  }, [])
+  }, [session.walletPubKey, session.verified, session.isVaultUnlocked])
 
-  // Upload flow (Task 5): encrypt locally -> hash -> upload encrypted package to IPFS.
+  // Manifest refresh must NOT run on every render.
+  // Guardrails:
+  // - Trigger only when wallet/session primitives change.
+  // - Avoid concurrent in-flight refreshes.
+  const refreshInFlightRef = useRef(false)
+  const lastRefreshKeyRef = useRef<string>('')
+
+  // Patch: reset de-dup state on disconnect/unlock to avoid stale keys blocking refresh.
+  useEffect(() => {
+    if (!SJ_DEBUG) return
+    if (!session.walletPubKey) {
+      lastRefreshKeyRef.current = ''
+      refreshInFlightRef.current = false
+      debugLog('[SJ_DEBUG][MyFiles] dedupReset', { reason: 'walletDisconnected' })
+    }
+  }, [session.walletPubKey])
+
+  useEffect(() => {
+    if (!SJ_DEBUG) return
+    if (session.isVaultUnlocked) {
+      lastRefreshKeyRef.current = ''
+      refreshInFlightRef.current = false
+      debugLog('[SJ_DEBUG][MyFiles] dedupReset', { reason: 'vaultUnlocked' })
+    }
+  }, [session.isVaultUnlocked])
+
+  const isSessionGateOk = useCallback((): boolean => {
+    // Runtime gate must use ONLY the local `useSession()` snapshot.
+    // Do not consult vaultGuards singleton here (race-prone).
+    if (!session.walletPubKey) return false
+    if (!session.isVaultUnlocked) return false
+    if (!session.verified) return false
+    return true
+  }, [session.walletPubKey, session.isVaultUnlocked, session.verified])
+
+  const refreshFromManifest = useCallback(async (reason: string) => {
+    const walletPubKey = session.walletPubKey
+
+    // Compute a stable key to dedupe refresh calls across renders.
+    // We intentionally include only stable primitives (strings/booleans),
+    // NOT the whole `session` object (which may be re-created).
+    try {
+      const gateOk = isSessionGateOk()
+
+      const unlock = session.lastUnlock ?? null
+
+      // MVP persistence fix:
+      // Manifest KEK must be derived from the stable Vault Root signature (SJ_VAULT_ROOT_V1),
+      // not from Unlock Vault (SJ_UNLOCK_V1) which is intentionally volatile.
+      const vaultRoot = session.lastVaultRoot ?? null
+      const vaultRootSig = session.lastVaultRootSignatureBytes ?? null
+
+      const manifestCid = safeGetManifestCid(walletPubKey)
+
+      // Patch 2: include the real manifestCid in the de-dup key.
+      // If append updates the pointer, refreshKey changes -> refresh is not skipped.
+      const refreshKey = `${walletPubKey ?? ''}|local-default|${manifestCid ?? ''}|${vaultRoot?.messageToSign ?? ''}|${gateOk ? '1' : '0'}`
+
+      debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest snapshot', {
+        reason,
+        walletPubKey,
+        gateOk,
+        vaultRootPresent: Boolean(vaultRoot),
+        vaultRootSigPresent: Boolean(vaultRootSig),
+        unlockPresent: Boolean(unlock),
+        manifestCidFound: manifestCid,
+        refreshKey,
+      })
+
+      // Exit path: missing deps / gate
+      if (!walletPubKey || !vaultRootSig || !unlock || !gateOk) {
+        const missingDeps = {
+          walletPubKey: Boolean(walletPubKey),
+          gateOk,
+          vaultRootSig: Boolean(vaultRootSig),
+          unlock: Boolean(unlock),
+        }
+
+        debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest action=skip', {
+          reason,
+          why: 'missingDeps',
+          missingDeps,
+        })
+
+        setFiles([])
+        // Only show a message when the user is gated but missing vault-root material
+        if (gateOk && walletPubKey && !vaultRootSig) {
+          setManifestErrorMessage('Vault Root requis pour charger le manifest (SJ_VAULT_ROOT_V1 non disponible en mémoire).')
+        } else if (gateOk && walletPubKey && !unlock) {
+          setManifestErrorMessage('Unlock Vault requis (SJ_UNLOCK_V1 non disponible en mémoire).')
+        } else if (!gateOk && walletPubKey) {
+          setManifestErrorMessage('Accès vault requis : Verify + Unlock Vault.')
+        } else {
+          setManifestErrorMessage(null)
+        }
+        return
+      }
+
+      // Exit path: in-flight
+      if (refreshInFlightRef.current) {
+        debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest action=skip', {
+          reason,
+          why: 'inFlight',
+          refreshKey,
+        })
+        return
+      }
+
+      // Exit path: dedup
+      if (refreshKey === lastRefreshKeyRef.current && reason !== 'manual') {
+        debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest action=skip', {
+          reason,
+          why: 'dedup',
+          lastRefreshKey: lastRefreshKeyRef.current,
+          candidateRefreshKey: refreshKey,
+          manifestCidFound: manifestCid,
+        })
+        return
+      }
+
+      refreshInFlightRef.current = true
+      try {
+        const { manifest } = await loadManifestOrInit({
+          walletPubKey,
+          signatureBytes: vaultRootSig,
+          unlock,
+          origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
+          vaultId: 'local-default',
+        })
+
+        const mapped: FileItem[] = (manifest.entries ?? []).map((e: ManifestEntryV1) => ({
+          id: e.entryId,
+          name: e.originalFileName ?? '(unknown)',
+          sizeBytes: e.fileSize ?? 0,
+          sizeText: formatBytes(e.fileSize ?? 0),
+          status: 'Ready',
+          dateISO: e.addedAt,
+          sharedWith: [],
+          tags: [],
+          cid: e.fileCid,
+        }))
+
+        lastRefreshKeyRef.current = refreshKey
+        setFiles(mapped)
+        setManifestErrorMessage(null)
+        debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest action=loaded', {
+          entriesCount: mapped.length,
+          manifestCidFound: manifestCid,
+          refreshKey,
+        })
+      } catch (error: any) {
+        setManifestErrorMessage(error?.message ?? 'Impossible de charger le manifest.')
+        debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest action=error', {
+          message: error?.message ?? String(error),
+          stack: shortStackTrace(),
+          refreshKey,
+        })
+      } finally {
+        refreshInFlightRef.current = false
+      }
+    } catch (error: any) {
+      setManifestErrorMessage(error?.message ?? 'Impossible de charger le manifest.')
+      refreshInFlightRef.current = false
+      debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest action=error', {
+        message: error?.message ?? String(error),
+        stack: shortStackTrace(),
+        reason,
+      })
+    }
+  }, [
+    session.walletPubKey,
+    session.isVaultUnlocked,
+    session.verified,
+    session.lastUnlock,
+    session.lastUnlockSignatureBytes,
+    session.lastVaultRoot,
+    session.lastVaultRootSignatureBytes,
+  ])
+
+  useEffect(() => {
+    void refreshFromManifest('effect')
+    // Only depend on stable session primitives to avoid maximum update depth loops.
+  }, [session.walletPubKey, session.isVaultUnlocked, session.verified, refreshFromManifest])
+
+  // Auto-refresh after reconnect + unlock:
+  // The initial effect may run while gateOk=false and skip, then never run again at the right moment.
+  // We explicitly trigger a refresh when prerequisites become available.
+  useEffect(() => {
+    if (!session.walletPubKey) return
+    if (!session.isVaultUnlocked) return
+    if (!session.lastVaultRootSignatureBytes) return
+
+    // Avoid duplicate/concurrent refresh:
+    if (refreshInFlightRef.current) return
+    // If we've already loaded once for this state, refreshFromManifest will dedupe via lastRefreshKeyRef.
+    void refreshFromManifest('post-unlock-auto')
+  }, [session.walletPubKey, session.isVaultUnlocked, session.lastVaultRootSignatureBytes, refreshFromManifest])
+
+  // Upload flow (Task 5 + Task 6): encrypt locally -> hash -> upload encrypted package -> append entry -> persist manifest.
   const handleFile = useCallback(async (file: File) => {
+    // Make the attempt atomic: snapshot all preconditions once.
+    const snapshot = {
+      instanceId: (sessionSingleton as any)?.instanceId,
+      walletPubKey: session.walletPubKey,
+      isVaultUnlocked: session.isVaultUnlocked,
+      verified: session.verified,
+      lastUnlockPresent: Boolean(session.lastUnlock),
+      vaultRootSigPresent: Boolean(session.lastVaultRootSignatureBytes),
+    }
+
     if (SJ_DEBUG) {
       console.debug('[IPFS:UI] handleFile start')
+      console.debug('[SJ_DEBUG][Upload] preconditions snapshot', snapshot)
     }
-    // Upload gating: require both IdentityVerified and VaultUnlocked before accepting files
-    if (!canPerformVaultActions()) {
-      setUiFlow('idle')
-      // Minimal UX: alert and block the action. Guides user to both Verify and Unlock flows.
-      window.alert('Upload denied — Verify identity and Unlock Vault before uploading files.')
+
+    // Runtime gate must use ONLY the local `useSession()` snapshot.
+    if (!snapshot.walletPubKey) {
+      setUiFlow('error')
+      setUploadErrorMessage('Wallet non connecté.')
+      if (SJ_DEBUG) console.debug('[SJ_DEBUG][Upload] gate fail', { reason: 'walletPubKey-null' })
+      return
+    }
+    if (!snapshot.verified) {
+      setUiFlow('error')
+      setUploadErrorMessage('Identity non vérifiée. Clique sur “Sign to verify”.')
+      if (SJ_DEBUG) console.debug('[SJ_DEBUG][Upload] gate fail', { reason: 'verified-null' })
+      return
+    }
+    if (!snapshot.isVaultUnlocked) {
+      setUiFlow('error')
+      setUploadErrorMessage('Vault verrouillé. Clique sur “Unlock Vault”.')
+      if (SJ_DEBUG) console.debug('[SJ_DEBUG][Upload] gate fail', { reason: 'vaultLocked' })
       return
     }
 
@@ -290,47 +486,51 @@ export default function Home(): JSX.Element {
     // enter loading
     setUiFlow('loading')
     setUploadErrorMessage(null)
-    const id = `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-    const base: FileItem = {
-      id,
-      name: file.name,
-      sizeBytes: file.size,
-      sizeText: formatBytes(file.size),
-      status: 'Pending',
-      dateISO: new Date().toISOString(),
-      sharedWith: [],
-      tags: [],
-      cid: '',
-    }
-    setFiles((prev) => [base, ...prev])
 
     try {
-      const walletPubKey = session.walletPubKey
-      if (!walletPubKey) {
-        throw new Error('Wallet non connecté.')
+      const walletPubKey = snapshot.walletPubKey
+
+      const unlock = session.lastUnlock
+      const vaultRootSig = session.lastVaultRootSignatureBytes
+
+      if (!unlock) {
+        throw new Error('Unlock Vault requis (matériel SJ_UNLOCK_V1 non disponible en mémoire).')
+      }
+      if (!vaultRootSig) {
+        throw new Error('Vault Root requis (signature SJ_VAULT_ROOT_V1 non disponible en mémoire).')
       }
 
       if (SJ_DEBUG) {
         console.debug('[IPFS:UI] upload start')
       }
-      const { cid } = await uploadEncryptedToIpfsOrThrow(file, walletPubKey)
+      const { cid, object } = await uploadEncryptedToIpfsOrThrow(file, walletPubKey)
       if (SJ_DEBUG) {
         console.debug('[IPFS:UI] upload ok', { cid })
       }
       setLastUploadedCid(cid)
 
-      setFiles((prev) =>
-        prev.map((it) =>
-          it.id === id
-            ? {
-                ...it,
-                status: 'Ready',
-                sharedWith: [],
-                cid,
-              }
-            : it,
-        ),
-      )
+      // Append to encrypted manifest (Task 6)
+      const entry: Omit<ManifestEntryV1, 'addedAt' | 'entryId'> = {
+        fileCid: cid,
+        envelope: object.envelope as any,
+        originalFileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+      }
+
+      await appendEntryAndPersist({
+        walletPubKey,
+        signatureBytes: vaultRootSig,
+        unlock,
+        entry,
+        origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
+        vaultId: 'local-default',
+      })
+
+      // Refresh UI from manifest (source of truth)
+      // Fix 1 (MVP): auto-refresh after append so uploaded files appear immediately without manual action.
+      await refreshFromManifest('post-append')
+
       setUiFlow('success')
       window.setTimeout(() => setUiFlow('idle'), 1000)
     } catch (error: any) {
@@ -338,10 +538,17 @@ export default function Home(): JSX.Element {
         console.debug('[IPFS:UI] handleFile error', { message: error?.message })
       }
       setUiFlow('error')
-      setUploadErrorMessage(error?.message ?? 'Erreur lors de l-upload IPFS.')
-      setFiles((prev) => prev.filter((it) => it.id !== id))
+      setUploadErrorMessage(error?.message ?? 'Erreur lors de l-upload IPFS / manifest.')
     }
-  }, [session])
+  }, [
+    SJ_DEBUG,
+    session.walletPubKey,
+    session.isVaultUnlocked,
+    session.verified,
+    session.lastUnlock,
+    session.lastVaultRootSignatureBytes,
+    refreshFromManifest,
+  ])
 
   // Filtering logic
   const filtered = useMemo(() => {
@@ -559,7 +766,24 @@ export default function Home(): JSX.Element {
           {/* Hidden input */}
           <input ref={fileInputRef} type="file" onChange={onInputChange} style={{ display: 'none' }} />
 
-          {/* File list (no CID here) */}
+          {/* File list (manifest-backed; no CID here) */}
+          {manifestErrorMessage && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 12,
+                border: `1px solid ${theme === 'light' ? '#fecaca' : '#7f1d1d'}`,
+                background: theme === 'light' ? '#fef2f2' : '#2b0b0b',
+                color: t.danger,
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >
+              {manifestErrorMessage}
+            </div>
+          )}
 
           <div
             style={{
@@ -727,7 +951,7 @@ export default function Home(): JSX.Element {
 
               <div style={{ height: 1, background: t.border, margin: '8px 0' }} />
 
-              <Field label="CID (mock)">
+              <Field label="CID">
                 <code
                   style={{
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',

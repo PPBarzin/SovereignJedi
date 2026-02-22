@@ -67,6 +67,27 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
   // Session state (VaultUnlocked) — used only for UI status display (non-sensitive)
   const session = useSession()
 
+  // Option A (strict): if no wallet is connected, clear persisted proof-of-control.
+  // This avoids the ambiguous UI state "Verified" while disconnected.
+  useEffect(() => {
+    if (session.isWalletConnected) return
+
+    try {
+      clearIdentity()
+      // Also update local state immediately (storage event might not fire in same tab)
+      setIdentity(null)
+    } catch {
+      // ignore
+    }
+
+    // Also lock vault just in case (memory-only). Disconnect is handled elsewhere.
+    try {
+      session.lockVault()
+    } catch {
+      // ignore
+    }
+  }, [session.isWalletConnected])
+
   // Use theme tokens (dark by default here). In a follow-up we can wire this to a global theme switch.
   const t = getTokens('dark')
 
@@ -130,7 +151,6 @@ export const IdentityStatus: FC<Props> = ({ onCleared, pollIntervalMs = 5000 }) 
       mounted = false
       clearInterval(id)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pollIntervalMs])
 
   const copyAddress = useCallback(async () => {

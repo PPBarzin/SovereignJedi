@@ -23,11 +23,22 @@
  * - This hook does not modify SessionManager's internals.
  * - It treats the persisted Verified signal as UI-only metadata (as per Task 3.5).
  * - It does not persist vaultUnlocked (SessionManager enforces this).
+ *
+ * Task 6 (Manifest v1):
+ * - Exposes BOTH:
+ *   - Unlock Vault material (SJ_UNLOCK_V1) — session gating only (volatile + TTL)
+ *   - Vault Root material (SJ_VAULT_ROOT_V1) — stable root to derive KEK for manifest across refresh
+ *
+ * Wallet signing UX (Phantom popup flicker):
+ * - When available, we inject a wallet-adapter-based `signMessage` into SessionManager so Unlock/VaultRoot
+ *   signatures are produced via the adapter path (more consistent with adapter connection state).
  */
 
 import { useCallback, useEffect, useState } from 'react'
+import type { BuildUnlockResult, BuildVaultRootResult } from '@sj/crypto'
 import type { VerifiedState } from './SessionManager'
 import SessionManagerDefault, { session as sessionSingleton } from './SessionManager'
+import { useWallet } from '@solana/wallet-adapter-react'
 
 type UseSessionReturn = {
   // actions
@@ -40,6 +51,23 @@ type UseSessionReturn = {
   isVaultUnlocked: boolean
   verified: VerifiedState | null
   walletPubKey: string | null
+
+  /**
+   * Task 6:
+   * Unlock Vault material (SJ_UNLOCK_V1) — volatile, TTL-enforced, session gating only.
+   * MUST NOT be used to derive a stable KEK for cross-refresh persistence.
+   */
+  lastUnlock: BuildUnlockResult | null
+  lastUnlockSignatureBytes: Uint8Array | null
+
+  /**
+   * Task 6:
+   * Vault Root material (SJ_VAULT_ROOT_V1) — stable, re-signable after refresh.
+   * This is the ONLY valid root to derive the stable KEK used to unwrap/decrypt the manifest.
+   */
+  lastVaultRoot: BuildVaultRootResult | null
+  lastVaultRootSignatureBytes: Uint8Array | null
+
   // utility
   refresh: () => void
 }
@@ -53,10 +81,29 @@ export function useSession(): UseSessionReturn {
   // Use the singleton session instance created in SessionManager.ts
   const session: SessionManagerDefault = sessionSingleton as any
 
+  // Wallet-adapter (preferred signing path when available)
+  const wallet = useWallet()
+
   const [walletPubKey, setWalletPubKey] = useState<string | null>(() => session.getWalletPubKey())
   const [isVaultUnlocked, setIsVaultUnlocked] = useState<boolean>(() => session.isVaultUnlocked())
   const [verified, setVerified] = useState<VerifiedState | null>(() => session.getVerified())
   const [isWalletConnected, setIsWalletConnected] = useState<boolean>(() => session.isWalletConnected())
+
+  // Task 6: in-memory Unlock Vault material (SJ_UNLOCK_V1)
+  const [lastUnlock, setLastUnlock] = useState<BuildUnlockResult | null>(
+    () => (session as any).getLastUnlock?.() ?? null
+  )
+  const [lastUnlockSignatureBytes, setLastUnlockSignatureBytes] = useState<Uint8Array | null>(
+    () => (session as any).getLastUnlockSignatureBytes?.() ?? null
+  )
+
+  // Task 6: in-memory Vault Root material (SJ_VAULT_ROOT_V1)
+  const [lastVaultRoot, setLastVaultRoot] = useState<BuildVaultRootResult | null>(
+    () => (session as any).getLastVaultRoot?.() ?? null
+  )
+  const [lastVaultRootSignatureBytes, setLastVaultRootSignatureBytes] = useState<Uint8Array | null>(
+    () => (session as any).getLastVaultRootSignatureBytes?.() ?? null
+  )
 
   // Central refresh function to sync React state from SessionManager / storage
   const refresh = useCallback(() => {
@@ -64,6 +111,15 @@ export function useSession(): UseSessionReturn {
     setIsVaultUnlocked(session.isVaultUnlocked())
     setVerified(session.getVerified())
     setIsWalletConnected(session.isWalletConnected())
+
+    // Task 6: keep unlock material in sync (memory-only)
+    setLastUnlock((session as any).getLastUnlock?.() ?? null)
+    setLastUnlockSignatureBytes((session as any).getLastUnlockSignatureBytes?.() ?? null)
+
+    // Task 6: keep vault-root material in sync (memory-only)
+    setLastVaultRoot((session as any).getLastVaultRoot?.() ?? null)
+    setLastVaultRootSignatureBytes((session as any).getLastVaultRootSignatureBytes?.() ?? null)
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -94,6 +150,31 @@ export function useSession(): UseSessionReturn {
     refresh()
   }, [refresh, session])
 
+  // Inject wallet-adapter signMessage into SessionManager when available.
+  // This keeps Unlock/VaultRoot signing consistent with the adapter connection state and can reduce popup flicker.
+  //
+  // IMPORTANT:
+  // - We must bind the method to preserve `this` context.
+  //   Otherwise calling the extracted function can throw:
+  //     "Cannot set properties of undefined (setting 'walletAdapterSigner')"
+  useEffect(() => {
+    const rawSetter = (session as any)?.setWalletAdapterSigner
+    if (typeof rawSetter !== 'function') return
+    const setWalletAdapterSigner = rawSetter.bind(session)
+
+    // Only inject when wallet-adapter provides a signMessage function.
+    if (wallet && typeof (wallet as any).signMessage === 'function') {
+      setWalletAdapterSigner(async (message: Uint8Array) => {
+        const sig = await (wallet as any).signMessage(message)
+        // wallet-adapter returns Uint8Array
+        return sig as Uint8Array
+      })
+    } else {
+      // Clear injected signer when adapter is unavailable/disconnected
+      setWalletAdapterSigner(undefined)
+    }
+  }, [wallet, session])
+
   // Install listeners for window.solana to enforce Task 3.5 invariants.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -106,11 +187,20 @@ export function useSession(): UseSessionReturn {
     }
 
     const handleAccountChanged = (newPubKey: any) => {
-      // NO HOT-SWITCH: on any account change, force disconnect at session level.
-      // If newPubKey === null => treat as disconnect (also disconnects session).
+      // MVP behavior:
+      // - Do NOT disconnect on accountChanged when a new pubkey is provided.
+      //   Disconnecting causes transient `walletPubKey=null` races (e.g. during upload).
+      // - If newPubKey is null => treat as disconnect.
+      // - If a new pubkey is provided => register it in SessionManager.
       try {
-        // Explicitly disconnect the SessionManager to clear in-memory vaultUnlocked state.
-        session.disconnectWallet()
+        if (newPubKey == null) {
+          session.disconnectWallet()
+        } else {
+          // newPubKey may be a PublicKey-like object or string; SessionManager normalizes.
+          session.connectWallet(newPubKey, 'phantom').catch(() => {
+            /* ignore connect errors */
+          })
+        }
       } catch {
         // ignore
       } finally {
@@ -229,6 +319,10 @@ export function useSession(): UseSessionReturn {
     isVaultUnlocked,
     verified,
     walletPubKey,
+    lastUnlock,
+    lastUnlockSignatureBytes,
+    lastVaultRoot,
+    lastVaultRootSignatureBytes,
     refresh,
   }
 }

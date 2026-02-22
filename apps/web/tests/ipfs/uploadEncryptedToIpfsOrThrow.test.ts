@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 
+import type { BuildUnlockResult } from '@sj/crypto'
+
 import {
   MAX_MVP_FILE_BYTES,
   uploadEncryptedToIpfsOrThrow,
@@ -120,7 +122,7 @@ describe('uploadEncryptedToIpfsOrThrow', () => {
           vaultId: 'local-default',
         },
         messageToSign: 'SJ_UNLOCK_V1\\n{"wallet":"wallet-pubkey"}',
-      })),
+      } as BuildUnlockResult)),
       deriveKekFromUnlockSignature: vi.fn(async () => new Uint8Array(32).fill(9)),
       encryptFile: vi.fn(async () => ({ encryptedFile, envelope })),
       sha256: vi.fn(async () => expectedHash),
@@ -136,14 +138,25 @@ describe('uploadEncryptedToIpfsOrThrow', () => {
     expect(result.integritySha256B64).toBe('AQIDBA==')
 
     expect(deps.sha256).toHaveBeenCalledTimes(1)
-    const basisBytes = deps.sha256.mock.calls[0][0] as Uint8Array
-    const basisJson = new TextDecoder().decode(basisBytes)
+    const basisBytesUnknown = deps.sha256.mock.calls.at(0)?.at(0) as unknown
+
+    // Type-safe runtime check under strict TS + vitest mock typing
+    const isUint8Array =
+      typeof basisBytesUnknown === 'object' &&
+      basisBytesUnknown !== null &&
+      (basisBytesUnknown as any).constructor?.name === 'Uint8Array'
+
+    if (!isUint8Array) {
+      throw new Error('Test invariant failed: sha256 was not called with a Uint8Array basis')
+    }
+
+    const basisJson = new TextDecoder().decode(basisBytesUnknown as Uint8Array)
     expect(basisJson).toContain('"header":{"version":1')
     expect(basisJson).toContain('"payload":{"ciphertextB64":"ciphertext-b64"}')
     expect(basisJson).not.toContain('integrity')
 
     expect(addEncryptedPackage).toHaveBeenCalledTimes(1)
-    const uploadedObject = addEncryptedPackage.mock.calls[0][0]
+    const uploadedObject = addEncryptedPackage.mock.calls.at(0)?.at(0) as any
     expect(uploadedObject.header).toEqual(encryptedFile)
     expect(uploadedObject.payload.ciphertextB64).toBe(encryptedFile.ciphertext)
     expect(uploadedObject.integrity.sha256B64).toBe('AQIDBA==')

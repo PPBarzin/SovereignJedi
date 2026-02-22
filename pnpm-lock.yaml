@@ -66,6 +66,9 @@ importers:
       '@sj/ipfs':
         specifier: workspace:*
         version: link:../../packages/ipfs
+      '@sj/manifest':
+        specifier: workspace:*
+        version: link:../../packages/manifest
       '@solana/wallet-adapter-base':
         specifier: ^0.9.27
         version: 0.9.27(@solana/web3.js@1.98.4)
@@ -194,6 +197,28 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^1.0.0
+        version: 1.6.1(@types/node@18.19.130)(jsdom@21.1.2)
+
+  packages/manifest:
+    dependencies:
+      '@sj/crypto':
+        specifier: workspace:*
+        version: link:../crypto
+      '@sj/ipfs':
+        specifier: workspace:*
+        version: link:../ipfs
+      canonicalize:
+        specifier: ^1.0.0
+        version: 1.0.8
+      libsodium-wrappers:
+        specifier: ^0.7.16
+        version: 0.7.16
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.6.1
         version: 1.6.1(@types/node@18.19.130)(jsdom@21.1.2)
 
   packages/storage:
@@ -2490,7 +2515,7 @@ packages:
       react-native: ^0.0.0-0 || >=0.60 <1.0
     dependencies:
       merge-options: 3.0.4
-      react-native: 0.83.1(@babel/core@7.28.5)(@types/react@18.3.27)(react@18.3.1)
+      react-native: 0.83.1(@babel/core@7.28.5)(react@18.3.1)
     dev: false
     optional: true
 
@@ -2588,7 +2613,7 @@ packages:
     resolution: {integrity: sha512-84feABbmeWo1kg81726UOlMKAhcQyFXYz2SjRKYkS78QmfhVDhJ2o/ps1VjhFfBz0i/scDwT1XNv9GwmRIghkg==}
     dev: false
 
-  /@react-native/virtualized-lists@0.83.1(@types/react@18.3.27)(react-native@0.83.1)(react@18.3.1):
+  /@react-native/virtualized-lists@0.83.1(react-native@0.83.1)(react@18.3.1):
     resolution: {integrity: sha512-MdmoAbQUTOdicCocm5XAFDJWsswxk7hxa6ALnm6Y88p01HFML0W593hAn6qOt9q6IM1KbAcebtH6oOd4gcQy8w==}
     engines: {node: '>= 20.19.4'}
     peerDependencies:
@@ -2599,11 +2624,10 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@types/react': 18.3.27
       invariant: 2.2.4
       nullthrows: 1.1.1
       react: 18.3.1
-      react-native: 0.83.1(@babel/core@7.28.5)(@types/react@18.3.27)(react@18.3.1)
+      react-native: 0.83.1(@babel/core@7.28.5)(react@18.3.1)
     dev: false
 
   /@react-native/virtualized-lists@0.83.1(react-native@0.83.1)(react@19.2.4):
@@ -3170,7 +3194,7 @@ packages:
       '@solana/wallet-standard-util': 1.1.2
       '@wallet-standard/core': 1.1.1
       js-base64: 3.7.8
-      react-native: 0.83.1(@babel/core@7.28.5)(@types/react@18.3.27)(react@18.3.1)
+      react-native: 0.83.1(@babel/core@7.28.5)(react@18.3.1)
     transitivePeerDependencies:
       - '@solana/wallet-adapter-base'
       - '@solana/web3.js'
@@ -5054,7 +5078,7 @@ packages:
       react-native:
         optional: true
     dependencies:
-      react-native: 0.83.1(@babel/core@7.28.5)(@types/react@18.3.27)(react@18.3.1)
+      react-native: 0.83.1(@babel/core@7.28.5)(react@18.3.1)
       tslib: 2.8.1
       ua-parser-js: 2.0.7
     dev: false
@@ -11694,7 +11718,7 @@ packages:
       - supports-color
     dev: false
 
-  /react-native@0.83.1(@babel/core@7.28.5)(@types/react@18.3.27)(react@18.3.1):
+  /react-native@0.83.1(@babel/core@7.28.5)(react@18.3.1):
     resolution: {integrity: sha512-mL1q5HPq5cWseVhWRLl+Fwvi5z1UO+3vGOpjr+sHFwcUletPRZ5Kv+d0tUfqHmvi73/53NjlQqX1Pyn4GguUfA==}
     engines: {node: '>= 20.19.4'}
     hasBin: true
@@ -11712,8 +11736,7 @@ packages:
       '@react-native/gradle-plugin': 0.83.1
       '@react-native/js-polyfills': 0.83.1
       '@react-native/normalize-colors': 0.83.1
-      '@react-native/virtualized-lists': 0.83.1(@types/react@18.3.27)(react-native@0.83.1)(react@18.3.1)
-      '@types/react': 18.3.27
+      '@react-native/virtualized-lists': 0.83.1(react-native@0.83.1)(react@18.3.1)
       abort-controller: 3.0.0
       anser: 1.4.10
       ansi-regex: 5.0.1

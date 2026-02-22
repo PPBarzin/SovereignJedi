@@ -1,0 +1,57 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": false,
+
+    /*
+     * Build the manifest package WITHOUT pulling workspace dependency source trees into the program.
+     *
+     * Why:
+     * - When this build uses NodeNext resolution, TypeScript starts typechecking imported workspace
+     *   sources (ex: @sj/crypto/src/index.ts) and enforces NodeNext rules there too (explicit .js extensions),
+     *   causing the build to fail due to extension requirements leaking from dependencies.
+     *
+     * Strategy:
+     * - Keep this package build on bundler-style module resolution.
+     * - Point @sj/crypto and @sj/ipfs imports at their built declaration outputs (dist/*.d.ts),
+     *   so TypeScript does NOT traverse their source files.
+     * - This keeps the manifest build independent and avoids NodeNext extension requirements coming from
+     *   @sj/crypto source.
+     */
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@sj/crypto": ["../crypto/dist/index.d.ts"],
+      "@sj/crypto/*": ["../crypto/dist/*"],
+      "@sj/ipfs": ["../ipfs/dist/index.d.ts"],
+      "@sj/ipfs/*": ["../ipfs/dist/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.test.tsx",
+    "**/*.spec.tsx",
+    "**/__tests__/**"
+  ]
+}

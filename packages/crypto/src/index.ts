@@ -12,6 +12,10 @@
  * - sha256(data) -> Promise<Uint8Array>
  * - utils: toHex, fromHex, utf8Encode, utf8Decode
  *
+ * Task 6 (Vault root key):
+ * - buildVaultRootMessageV1 (SJ_VAULT_ROOT_V1): stable, re-signable message to derive a stable vault root key.
+ * - deriveVaultRootKekFromSignature: derives a stable KEK root from a signature of SJ_VAULT_ROOT_V1.
+ *
  * NOTE: This module uses the Web Crypto API (SubtleCrypto). Node.js >=18 provides a compatible webcrypto implementation.
  * If SubtleCrypto is not available in the environment, functions will throw an informative error.
  *
@@ -42,8 +46,29 @@
      `globalThis.sodium` or otherwise make `libsodium-wrappers-sumo` available at runtime. If absent,
      the underlying implementation will fail hard (throw).
 */
+import canonicalize from 'canonicalize';
 import type { EncryptedFile, Envelope, UnlockMessageV1, BuildUnlockResult } from './v0_local_encryption/types';
 export type { EncryptedFile, Envelope, UnlockMessageV1, BuildUnlockResult } from './v0_local_encryption/types';
+
+/**
+ * Task 6 (Vault Root) — types
+ *
+ * We intentionally keep this separate from SJ_UNLOCK_V1:
+ * - SJ_UNLOCK_V1: volatile (issuedAt/expiresAt/nonce), TTL-enforced, used for session unlock gating
+ * - SJ_VAULT_ROOT_V1: stable (no volatile fields), used to derive a stable vault root key across refresh
+ */
+export type VaultRootMessageV1 = {
+  sj: 'SovereignJedi'
+  ver: '1'
+  type: 'VAULT_ROOT'
+  wallet: string
+  vaultId: string
+}
+
+export type BuildVaultRootResult = {
+  canonicalObject: VaultRootMessageV1
+  messageToSign: string
+}
 
 /**
  * Dynamic wrappers that forward calls to the implementation module.
@@ -59,6 +84,44 @@ export async function buildUnlockMessageV1(params: {
 }): Promise<BuildUnlockResult> {
   const mod = await import('./v0_local_encryption/localEncryption');
   return mod.buildUnlockMessageV1(params);
+}
+
+/**
+ * buildVaultRootMessageV1 (SJ_VAULT_ROOT_V1)
+ *
+ * Stable, re-signable message builder intended to derive a stable vault root key across refresh.
+ *
+ * IMPORTANT:
+ * - This MUST NOT include volatile fields (issuedAt/expiresAt/nonce), unlike SJ_UNLOCK_V1.
+ * - This does NOT enforce TTL. It is a *root key* message, not a session unlock message.
+ *
+ * Message format:
+ *   "SJ_VAULT_ROOT_V1\n<canonical-json>"
+ *
+ * Canonicalization:
+ * - Uses the same RFC 8785 canonicalization implementation (`canonicalize`) as the rest of the crypto stack.
+ */
+export async function buildVaultRootMessageV1(params: {
+  wallet: string;
+  vaultId?: string;
+}): Promise<BuildVaultRootResult> {
+  const vaultId = params.vaultId ?? 'local-default';
+
+  const canonicalObject: VaultRootMessageV1 = {
+    sj: 'SovereignJedi',
+    ver: '1',
+    type: 'VAULT_ROOT',
+    wallet: params.wallet,
+    vaultId,
+  };
+
+  const jcs = canonicalize(canonicalObject);
+  if (typeof jcs !== 'string') {
+    throw new Error('Canonicalization failed: canonicalize() did not return a string');
+  }
+
+  const messageToSign = `SJ_VAULT_ROOT_V1\n${jcs}`;
+  return { canonicalObject, messageToSign };
 }
 
 export async function prepareUnlock(params: {
@@ -115,6 +178,26 @@ export async function deriveKekFromUnlockSignature(params: {
 }): Promise<Uint8Array> {
   assertUnlockNotExpired(params.unlock, params.nowMs ?? Date.now());
   return deriveKekFromSignatureInternal(params.signatureBytes, params.saltBytes);
+}
+
+/**
+ * deriveVaultRootKekFromSignature
+ *
+ * Derives a stable vault root KEK from a signature of SJ_VAULT_ROOT_V1.
+ *
+ * Derivation:
+ * - ikm = SHA-256(signatureBytes)
+ * - kek = HKDF-SHA256(ikm, salt=null, info="SJ-KEK-v1", length=32)
+ *
+ * IMPORTANT:
+ * - This does NOT enforce expiry (no TTL for vault root).
+ * - Callers MUST ensure this is used only for encrypting/decrypting user data layers
+ *   intended to persist across refresh (ex: manifest root), not for session gating.
+ */
+export async function deriveVaultRootKekFromSignature(params: {
+  signatureBytes: Uint8Array;
+}): Promise<Uint8Array> {
+  return deriveKekFromSignatureInternal(params.signatureBytes, null);
 }
 
 export async function generateFileKey(): Promise<Uint8Array> {

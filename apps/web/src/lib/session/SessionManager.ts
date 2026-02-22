@@ -7,16 +7,40 @@
  * - Keep `VaultUnlocked` strictly in-memory (lost on refresh / tab close)
  * - Persist a non-sensitive `Verified` signal in localStorage with a TTL (default 24h)
  *   containing only non-secret metadata (walletPubKey, verifiedAt, expiresAt, optional provider)
- * - Perform client-side signature verification (ed25519 / tweetnacl) for the unlock flow
  *
- * Notes:
- * - Targeted for Phantom / Solana flows in Task 3.5 (window.solana) — minimal and explicit.
- * - No cryptographic key material (KEKs, private seeds, derived keys) is generated or stored.
- * - The Verified signal is a UX convenience only and must not be treated as a security boundary.
+ * Task 6 (Manifest v1) requirements (MVP decisions):
+ * - Keep 3 separate roots:
+ *   1) Proof-of-control / Verify: UX gating only (may remain message-maison), MUST NOT be used for KEK derivation
+ *   2) Unlock Vault (SJ_UNLOCK_V1): volatile, TTL-enforced (OQ-06), session gating only
+ *   3) Vault Root (SJ_VAULT_ROOT_V1): stable, re-signable after refresh, ONLY root used to derive stable KEK for manifest
+ *
+ * Security invariants:
+ * - No secrets persisted (no KEK, no root signature, no private keys). Vault Root + Unlock materials are memory-only.
+ *
+ * UX / Wallet integration note (Phantom popup flicker):
+ * - When available, we prefer signing via the Solana wallet-adapter (injected via `setWalletAdapterSigner()`),
+ *   because it tends to integrate better with the provider lifecycle and avoids popup flicker/races.
+ * - We keep a fallback to window.solana for environments where wallet-adapter is not available.
+ *
+ * Debugging (MVP):
+ * - Under NEXT_PUBLIC_SJ_DEBUG=true, we log sha256(messageToSign) for unlock and vault-root messages.
+ *   We never log the raw messageToSign or the signature bytes.
+ *
+ * Testability:
+ * - `unlockVault()` supports injecting a custom unlock builder (test-only) via `setUnlockBuilderForTests()`.
+ * - Vault root message builder can be injected via `setVaultRootBuilderForTests()` (test-only).
  */
 
 import * as nacl from "tweetnacl";
 import bs58 from "bs58";
+import type { BuildUnlockResult, BuildVaultRootResult } from "@sj/crypto";
+import {
+  buildUnlockMessageV1,
+  deriveKekFromUnlockSignature,
+  cryptoGetRandomBytes,
+  sha256,
+  buildVaultRootMessageV1,
+} from "@sj/crypto";
 
 export const MESSAGE_TO_SIGN = `SOVEREIGN_JEDI_UNLOCK_VAULT_V1
 Cette signature déverrouille temporairement votre coffre pour la session en cours.`;
@@ -42,6 +66,73 @@ export type VerifiedState = {
 
 function nowMs(): number {
   return Date.now();
+}
+
+function sjDebugLog(message: string, data?: Record<string, any>): void {
+  if (!isSjDebugEnabled()) return;
+  try {
+    // eslint-disable-next-line no-console
+    console.debug(`[SJ_DEBUG][SessionManager] ${message}`, data ?? {});
+  } catch {
+    // ignore
+  }
+}
+
+function shortStackTrace(skipLines = 2, maxLines = 6): string[] {
+  try {
+    const raw = new Error().stack ?? "";
+    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    return lines.slice(skipLines, skipLines + maxLines);
+  } catch {
+    return [];
+  }
+}
+
+function isSjDebugEnabled(): boolean {
+  try {
+    return String(process.env.NEXT_PUBLIC_SJ_DEBUG).toLowerCase() === "true";
+  } catch {
+    return false;
+  }
+}
+
+function buildSessionInstanceId(): string {
+  try {
+    const c = (globalThis as any)?.crypto;
+    if (c && typeof c.randomUUID === "function") {
+      return c.randomUUID();
+    }
+  } catch {
+    // ignore
+  }
+  return `sj-session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  // Node
+  // eslint-disable-next-line no-undef
+  if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("base64");
+
+  // Browser fallback
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i] ?? 0);
+  // eslint-disable-next-line no-undef
+  return btoa(binary);
+}
+
+async function debugLogMessageToSignSha256(tag: string, messageToSign: string): Promise<void> {
+  if (!isSjDebugEnabled()) return;
+  try {
+    const bytes = new TextEncoder().encode(messageToSign);
+    const digest = await sha256(bytes);
+    const b64 = toBase64(new Uint8Array(digest));
+    // IMPORTANT: never log messageToSign or signature; only log the digest for diffing across refresh.
+    // eslint-disable-next-line no-console
+    console.debug(`[SJ_DEBUG] ${tag} messageToSign sha256B64`, { sha256B64: b64 });
+  } catch (e: any) {
+    // eslint-disable-next-line no-console
+    console.debug(`[SJ_DEBUG] ${tag} messageToSign sha256B64 (failed)`, { message: e?.message ?? String(e) });
+  }
 }
 
 /**
@@ -153,28 +244,167 @@ function clearVerified(): void {
  * VaultUnlocked is memory-only and lost on refresh.
  */
 export class SessionManager {
+  public readonly instanceId: string = buildSessionInstanceId();
   private walletPubKey: string | null = null; // base58 string
   private walletProvider: string | null = null;
   private vaultUnlocked = false; // memory-only
   private verified: VerifiedState | null = null;
 
+  /**
+   * Task 6 (Manifest v1):
+   * In-memory Unlock Vault material for the current tab/session ONLY (SJ_UNLOCK_V1).
+   *
+   * - lastUnlock: canonical object + messageToSign for SJ_UNLOCK_V1
+   * - lastUnlockSignatureBytes: signature bytes returned by the wallet for unlock.messageToSign
+   *
+   * MUST NOT be persisted.
+   */
+  private lastUnlock: BuildUnlockResult | null = null;
+  private lastUnlockSignatureBytes: Uint8Array | null = null;
+
+  /**
+   * Task 6 (Manifest v1):
+   * In-memory Vault Root material for the current tab/session ONLY (SJ_VAULT_ROOT_V1).
+   *
+   * This is the ONLY valid root for stable manifest KEK derivation across refresh.
+   *
+   * - lastVaultRoot: canonical object + messageToSign for SJ_VAULT_ROOT_V1
+   * - lastVaultRootSignatureBytes: signature bytes returned by the wallet for vaultRoot.messageToSign
+   *
+   * MUST NOT be persisted.
+   */
+  private lastVaultRoot: BuildVaultRootResult | null = null;
+  private lastVaultRootSignatureBytes: Uint8Array | null = null;
+
   // Optional injected signer for testing or alternative integrations.
   // The signer MUST accept the message bytes and return a signature bytes (Uint8Array).
   private signer?: (message: Uint8Array) => Promise<Uint8Array>;
+
+  /**
+   * Optional injected wallet-adapter signer.
+   *
+   * When present, this takes precedence over window.solana to reduce provider races/popups.
+   * It must sign the provided message bytes and return signature bytes.
+   */
+  private walletAdapterSigner?: (message: Uint8Array) => Promise<Uint8Array>;
+
+  /**
+   * Optional injected unlock builder for deterministic tests.
+   * Defaults to @sj/crypto.buildUnlockMessageV1.
+   *
+   * IMPORTANT:
+   * - This is NOT persisted.
+   * - Production code should use the default.
+   */
+  private unlockBuilder?: (params: {
+    origin?: string;
+    wallet: string;
+    vaultId?: string;
+    nonceBytes?: Uint8Array;
+    issuedAt?: string;
+    expiresAt?: string;
+  }) => Promise<BuildUnlockResult>;
+
+  /**
+   * Optional injected vault-root builder for deterministic tests.
+   * Defaults to @sj/crypto.buildVaultRootMessageV1.
+   *
+   * IMPORTANT:
+   * - This is NOT persisted.
+   * - Production code should use the default.
+   */
+  private vaultRootBuilder?: (params: {
+    origin?: string;
+    wallet: string;
+    vaultId?: string;
+  }) => Promise<BuildVaultRootResult>;
 
   constructor() {
     // Load persisted non-sensitive verified signal if available.
     this.verified = loadVerified();
     // Enforce Task 3.5 invariant: VaultUnlocked MUST be false on initialization (fresh session).
     this.vaultUnlocked = false;
+
+    if (isSjDebugEnabled()) {
+      // eslint-disable-next-line no-console
+      console.log("[SJ_DEBUG][Session] NEW instance", {
+        instanceId: this.instanceId,
+        walletPubKey: this.walletPubKey,
+        vaultUnlocked: this.vaultUnlocked,
+        stack: new Error().stack?.split("\n").slice(0, 4),
+      });
+    }
+  }
+
+  private logWalletMutation(action: "connect" | "disconnect" | "setWalletPubKey"): void {
+    if (!isSjDebugEnabled()) return;
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[SJ_DEBUG][Session]", {
+        instanceId: this.instanceId,
+        action,
+        newValue: this.walletPubKey,
+        stack: new Error().stack?.split("\n").slice(0, 4),
+      });
+    } catch {
+      // ignore
+    }
   }
 
   /**
-   * Inject a signer function (useful for unit tests or when the environment
    * provides a different signature API).
    */
   setSigner(fn: (message: Uint8Array) => Promise<Uint8Array>): void {
     this.signer = fn;
+  }
+
+  /**
+   * setWalletAdapterSigner
+   *
+   * Inject a signer from Solana wallet-adapter (preferred path when available).
+   * This is not persisted and is safe to re-inject on every page load.
+   */
+  setWalletAdapterSigner(fn?: (message: Uint8Array) => Promise<Uint8Array>): void {
+    this.walletAdapterSigner = fn;
+  }
+
+  /**
+   * setUnlockBuilderForTests
+   *
+   * Test-only hook: inject a deterministic unlock builder so unit tests can control
+   * the returned `BuildUnlockResult` (including `expiresAt`) without monkeypatching ESM exports.
+   *
+   * IMPORTANT:
+   * - This MUST NOT be used by production code.
+   * - The injected builder is memory-only and is cleared by calling this with `undefined`.
+   */
+  setUnlockBuilderForTests(
+    fn?: (params: {
+      origin?: string;
+      wallet: string;
+      vaultId?: string;
+      nonceBytes?: Uint8Array;
+      issuedAt?: string;
+      expiresAt?: string;
+    }) => Promise<BuildUnlockResult>
+  ): void {
+    this.unlockBuilder = fn;
+  }
+
+  /**
+   * setVaultRootBuilderForTests
+   *
+   * Test-only hook: inject a deterministic vault-root builder so unit tests can control
+   * the returned `BuildVaultRootResult` without monkeypatching ESM exports.
+   *
+   * IMPORTANT:
+   * - This MUST NOT be used by production code.
+   * - The injected builder is memory-only and is cleared by calling this with `undefined`.
+   */
+  setVaultRootBuilderForTests(
+    fn?: (params: { origin?: string; wallet: string; vaultId?: string }) => Promise<BuildVaultRootResult>
+  ): void {
+    this.vaultRootBuilder = fn;
   }
 
   /**
@@ -185,6 +415,15 @@ export class SessionManager {
    * @param provider - optional provider id (e.g. "phantom")
    */
   async connectWallet(pubKey: any, provider?: string): Promise<void> {
+    this.logWalletMutation("connect");
+    sjDebugLog("connectWallet() called", {
+      inputType: typeof pubKey,
+      provider: provider ?? null,
+      prevWalletPubKey: this.walletPubKey,
+      prevVaultUnlocked: this.vaultUnlocked,
+      stack: shortStackTrace(),
+    });
+
     // Normalize pubKey argument to a base58 string if possible.
     // Accepts string, PublicKey-like objects (with toBase58), or other.
     let normalizedPubKey: string | null = null;
@@ -213,11 +452,23 @@ export class SessionManager {
     // Always lock the vault on connect
     const prevPubKey = this.walletPubKey;
     this.walletPubKey = normalizedPubKey;
+    this.logWalletMutation("setWalletPubKey");
     this.walletProvider = provider || null;
     this.vaultUnlocked = false;
 
+    sjDebugLog("connectWallet() applied", {
+      prevWalletPubKey: prevPubKey,
+      walletPubKey: this.walletPubKey,
+      walletProvider: this.walletProvider,
+      vaultUnlocked: this.vaultUnlocked,
+    });
+
     // If the persisted Verified signal belongs to another pubkey, clear it
     if (this.verified && this.verified.walletPubKey !== normalizedPubKey) {
+      sjDebugLog("connectWallet() clearing persisted verified (wallet mismatch)", {
+        verifiedWalletPubKey: this.verified.walletPubKey,
+        normalizedPubKey,
+      });
       clearVerified();
       this.verified = null;
     }
@@ -227,6 +478,10 @@ export class SessionManager {
       const loaded = loadVerified();
       if (loaded && loaded.walletPubKey === normalizedPubKey) {
         this.verified = loaded;
+        sjDebugLog("connectWallet() loaded verified from storage", {
+          walletPubKey: normalizedPubKey,
+          expiresAt: loaded.expiresAt,
+        });
       }
     }
 
@@ -234,6 +489,17 @@ export class SessionManager {
     if (prevPubKey && prevPubKey !== normalizedPubKey) {
       // the above logic already cleared verified if needed; keep vault locked
       this.vaultUnlocked = false;
+
+      // Task 6: also clear in-memory unlock material (no hot-switch allowed)
+      this.lastUnlock = null;
+      this.lastUnlockSignatureBytes = null;
+      this.lastVaultRoot = null;
+      this.lastVaultRootSignatureBytes = null;
+
+      sjDebugLog("connectWallet() hot-switch detected: cleared in-memory unlock + vaultRoot", {
+        from: prevPubKey,
+        to: normalizedPubKey,
+      });
     }
 
     // Notify UI / hooks that session state changed so listeners can refresh immediately.
@@ -256,99 +522,164 @@ export class SessionManager {
       throw new Error("Wallet not connected");
     }
 
-    // Build a per-session unlock message including domain, publicKey, issuedAt and nonce.
-    // This helps prevent message replay attacks while keeping verification entirely client-side.
-    const issuedAtIso = new Date().toISOString();
-    const nonce = (function () {
-      try {
-        if (typeof window !== "undefined" && window.crypto && typeof window.crypto.getRandomValues === "function") {
-          const arr = new Uint8Array(16);
-          window.crypto.getRandomValues(arr);
-          return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
-        }
-      } catch {
-        // fallthrough
-      }
-      // Fallback pseudo-random value (non-cryptographic) — acceptable as fallback only.
-      return Math.random().toString(16).slice(2) + Date.now().toString(16);
-    })();
+    sjDebugLog("unlockVault() start", {
+      walletPubKey: this.walletPubKey,
+      vaultUnlockedBefore: this.vaultUnlocked,
+      hasVerified: Boolean(this.verified),
+    });
 
-    const domain = (typeof window !== "undefined" && window.location && window.location.host) ? window.location.host : "localhost";
-    const message = `${MESSAGE_PREFIX}
-domain: ${domain}
-publicKey: ${this.walletPubKey}
-issuedAt: ${issuedAtIso}
-nonce: ${nonce}
+    const origin = (typeof window !== "undefined" && window.location) ? window.location.origin : "http://localhost";
+    const now = Date.now();
+    const vaultId = "local-default";
 
-Cette signature déverrouille temporairement votre coffre pour la session en cours.`;
+    /* -------------------------
+     * 1) Unlock Vault (SJ_UNLOCK_V1) — volatile + TTL (session gating)
+     * ------------------------- */
+    const issuedAt = new Date(now).toISOString();
+    const expiresAt = new Date(now + 10 * 60 * 1000).toISOString();
 
-    const messageBytes = new TextEncoder().encode(message);
+    const unlockBuilder = this.unlockBuilder ?? buildUnlockMessageV1;
 
-    // 1) Obtain a signature via the injected signer, if present
-    let signatureBytes: Uint8Array | null = null;
-    if (this.signer) {
-      signatureBytes = await this.signer(messageBytes);
+    const unlock: BuildUnlockResult = await unlockBuilder({
+      origin,
+      wallet: this.walletPubKey,
+      vaultId,
+      issuedAt,
+      expiresAt,
+    });
+
+    await debugLogMessageToSignSha256("SJ_UNLOCK_V1", unlock.messageToSign);
+    const unlockMessageBytes = new TextEncoder().encode(unlock.messageToSign);
+
+    let unlockSignatureBytes: Uint8Array | null = null;
+
+    // Prefer injected wallet-adapter signer when available (reduces popup flicker/races).
+    if (this.walletAdapterSigner) {
+      unlockSignatureBytes = await this.walletAdapterSigner(unlockMessageBytes);
+    } else if (this.signer) {
+      unlockSignatureBytes = await this.signer(unlockMessageBytes);
     } else {
-      // 2) Try to use window.solana.signMessage (Phantom-like)
       if (typeof window !== "undefined") {
         const anyWin = window as any;
         try {
           if (anyWin?.solana?.signMessage && typeof anyWin.solana.signMessage === "function") {
-            // Phantom's signMessage typically accepts Uint8Array and returns { signature: Uint8Array }
-            const res = await anyWin.solana.signMessage(messageBytes, "utf8");
+            const res = await anyWin.solana.signMessage(unlockMessageBytes, "utf8");
             if (res && res.signature) {
-              // res.signature might already be Uint8Array or base58/base64 string in some adapters
-              signatureBytes = toUint8Array(res.signature as any);
+              unlockSignatureBytes = toUint8Array(res.signature as any);
             }
           } else if (anyWin?.solana?.request && typeof anyWin.solana.request === "function") {
-            // Some providers implement a generic request for signMessage
             try {
-              const res = await anyWin.solana.request({ method: "signMessage", params: [Array.from(messageBytes)] });
+              const res = await anyWin.solana.request({ method: "signMessage", params: [Array.from(unlockMessageBytes)] });
               if (res && res.signature) {
-                signatureBytes = toUint8Array(res.signature as any);
+                unlockSignatureBytes = toUint8Array(res.signature as any);
               }
             } catch {
-              // ignore and let the absent signature be handled below
+              // ignore
             }
           }
         } catch {
-          // ignore provider errors — will be handled below
+          // ignore
         }
       }
     }
 
-    if (!signatureBytes) {
+    if (!unlockSignatureBytes) {
       throw new Error("No signature available from wallet/provider");
     }
 
-    // Verify signature client-side with the known pubkey
-    const pubKeyBytes = toUint8Array(this.walletPubKey);
-    let ok = false;
-    try {
-      ok = nacl.sign.detached.verify(messageBytes, signatureBytes, pubKeyBytes);
-    } catch (e) {
-      // Normalize errors from the verification library (e.g. bad signature size)
-      throw new Error("Signature verification failed");
-    }
-    if (!ok) throw new Error("Signature verification failed");
+    // Store unlock material in-memory only
+    this.lastUnlock = unlock;
+    this.lastUnlockSignatureBytes = unlockSignatureBytes;
 
-    // Persist a non-sensitive Verified signal (metadata only) and include nonce/issuedAt
+    // Enforce OQ-06 at Unlock time (must refuse expired unlock messages)
+    // We DO NOT persist KEK; we only validate the unlock is not expired.
+    const unlockSaltBytes = cryptoGetRandomBytes(32);
+    await deriveKekFromUnlockSignature({
+      signatureBytes: unlockSignatureBytes,
+      saltBytes: unlockSaltBytes,
+      unlock,
+      nowMs: now,
+    });
+
+    /* -------------------------
+     * 2) Vault Root (SJ_VAULT_ROOT_V1) — stable root for manifest KEK
+     * ------------------------- */
+    const vaultRootBuilder = this.vaultRootBuilder ?? buildVaultRootMessageV1;
+    const vaultRoot: BuildVaultRootResult = await vaultRootBuilder({
+      wallet: this.walletPubKey,
+      vaultId,
+    });
+
+    await debugLogMessageToSignSha256("SJ_VAULT_ROOT_V1", vaultRoot.messageToSign);
+    const vaultRootMessageBytes = new TextEncoder().encode(vaultRoot.messageToSign);
+
+    let vaultRootSignatureBytes: Uint8Array | null = null;
+
+    // Prefer injected wallet-adapter signer when available (reduces popup flicker/races).
+    if (this.walletAdapterSigner) {
+      vaultRootSignatureBytes = await this.walletAdapterSigner(vaultRootMessageBytes);
+    } else if (this.signer) {
+      // In tests, the signer is injected; we reuse it for vault-root signing.
+      vaultRootSignatureBytes = await this.signer(vaultRootMessageBytes);
+    } else {
+      if (typeof window !== "undefined") {
+        const anyWin = window as any;
+        try {
+          if (anyWin?.solana?.signMessage && typeof anyWin.solana.signMessage === "function") {
+            const res = await anyWin.solana.signMessage(vaultRootMessageBytes, "utf8");
+            if (res && res.signature) {
+              vaultRootSignatureBytes = toUint8Array(res.signature as any);
+            }
+          } else if (anyWin?.solana?.request && typeof anyWin.solana.request === "function") {
+            try {
+              const res = await anyWin.solana.request({ method: "signMessage", params: [Array.from(vaultRootMessageBytes)] });
+              if (res && res.signature) {
+                vaultRootSignatureBytes = toUint8Array(res.signature as any);
+              }
+            } catch {
+              // ignore
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!vaultRootSignatureBytes) {
+      throw new Error("No vault-root signature available from wallet/provider");
+    }
+
+    // Store vault-root material in-memory only (used by manifest service to derive stable KEK)
+    this.lastVaultRoot = vaultRoot;
+    this.lastVaultRootSignatureBytes = vaultRootSignatureBytes;
+
+    /* -------------------------
+     * 3) Verified signal (UX-only; remains separate from KEK derivation)
+     * ------------------------- */
     const verifiedAt = nowMs();
-    const ttlMs = DEFAULT_VERIFIED_TTL_MS; // default 24h as per project doc
-    const expiresAt = verifiedAt + ttlMs;
+    const ttlMs = DEFAULT_VERIFIED_TTL_MS;
     const v: VerifiedState = {
       walletPubKey: this.walletPubKey,
       verifiedAt,
-      expiresAt,
+      expiresAt: verifiedAt + ttlMs,
       walletProvider: this.walletProvider || undefined,
-      nonce,
-      issuedAt: issuedAtIso,
-    };
+      nonce: (this.verified as any)?.nonce,
+      issuedAt: (this.verified as any)?.issuedAt,
+    } as any;
+
     saveVerified(v);
     this.verified = v;
 
     // Set VaultUnlocked in memory only
     this.vaultUnlocked = true;
+
+    sjDebugLog("unlockVault() success", {
+      walletPubKey: this.walletPubKey,
+      vaultUnlockedAfter: this.vaultUnlocked,
+      hasLastUnlock: Boolean(this.lastUnlock && this.lastUnlockSignatureBytes),
+      hasVaultRoot: Boolean(this.lastVaultRoot && this.lastVaultRootSignatureBytes),
+    });
 
     // Notify listeners immediately that session state changed (vault unlocked)
     try {
@@ -365,6 +696,13 @@ Cette signature déverrouille temporairement votre coffre pour la session en cou
    */
   lockVault(): void {
     this.vaultUnlocked = false;
+
+    // Task 6: clear in-memory unlock + vault-root material on explicit lock
+    this.lastUnlock = null;
+    this.lastUnlockSignatureBytes = null;
+    this.lastVaultRoot = null;
+    this.lastVaultRootSignatureBytes = null;
+
     // Notify listeners immediately that session state changed (vault locked)
     try {
       if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
@@ -373,6 +711,46 @@ Cette signature déverrouille temporairement votre coffre pour la session en cou
     } catch {
       // ignore
     }
+  }
+
+  /**
+   * Task 6 (Manifest v1):
+   * Expose the in-memory SJ_UNLOCK_V1 material required to derive KEK and unwrap the manifest key.
+   *
+   * IMPORTANT:
+   * - This is intentionally memory-only and MUST NOT be persisted.
+   * - Callers MUST treat the signature bytes as sensitive session material.
+   */
+  getLastUnlock(): BuildUnlockResult | null {
+    return this.lastUnlock;
+  }
+
+  /**
+   * Task 6 (Manifest v1):
+   * Return the in-memory signature bytes that correspond to `getLastUnlock().messageToSign`.
+   *
+   * Returns null when vault has not been unlocked in this session/tab.
+   */
+  getLastUnlockSignatureBytes(): Uint8Array | null {
+    return this.lastUnlockSignatureBytes;
+  }
+
+  /**
+   * Task 6 (Vault Root):
+   * Return the in-memory Vault Root build result (SJ_VAULT_ROOT_V1).
+   */
+  getLastVaultRoot(): BuildVaultRootResult | null {
+    return this.lastVaultRoot;
+  }
+
+  /**
+   * Task 6 (Vault Root):
+   * Return the in-memory signature bytes that correspond to `getLastVaultRoot().messageToSign`.
+   *
+   * This is the ONLY valid signature root for stable manifest KEK derivation across refresh.
+   */
+  getLastVaultRootSignatureBytes(): Uint8Array | null {
+    return this.lastVaultRootSignatureBytes;
   }
 
   /**
@@ -409,11 +787,38 @@ Cette signature déverrouille temporairement votre coffre pour la session en cou
    * Disconnect wallet: clear pubkey, provider, vault state and verified signal.
    */
   disconnectWallet(): void {
+    this.logWalletMutation("disconnect");
+    if (isSjDebugEnabled()) {
+      // eslint-disable-next-line no-console
+      console.log('[SJ_DEBUG][Session] disconnect does NOT touch manifest keys')
+    }
+    sjDebugLog("disconnectWallet() called", {
+      prevWalletPubKey: this.walletPubKey,
+      vaultUnlockedBefore: this.vaultUnlocked,
+      stack: shortStackTrace(),
+    });
+
     this.walletPubKey = null;
+    this.logWalletMutation("setWalletPubKey");
     this.walletProvider = null;
     this.vaultUnlocked = false;
+
+    // Task 6: clear in-memory unlock + vault-root material on disconnect
+    // (must never be reused across wallets/sessions and must not be persisted)
+    this.lastUnlock = null;
+    this.lastUnlockSignatureBytes = null;
+    this.lastVaultRoot = null;
+    this.lastVaultRootSignatureBytes = null;
+
     clearVerified();
     this.verified = null;
+
+    sjDebugLog("disconnectWallet() applied", {
+      walletPubKey: this.walletPubKey,
+      vaultUnlockedAfter: this.vaultUnlocked,
+      hasVerified: Boolean(this.verified),
+    });
+
     // Notify listeners immediately that session state changed (wallet disconnected)
     try {
       if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
