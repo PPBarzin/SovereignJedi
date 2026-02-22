@@ -66,7 +66,6 @@ export default function UnlockVaultButton(): JSX.Element | null {
     isVaultUnlocked,
     unlockVault,
     walletPubKey,
-    connectWallet,
     // other helpers available from hook if needed
   } = useSession()
 
@@ -85,28 +84,13 @@ export default function UnlockVaultButton(): JSX.Element | null {
     setError(null)
     setLoading(true)
     try {
-      // If the session doesn't know about the connected wallet but the provider has a pubkey,
-      // register the pubkey with the SessionManager before attempting unlock.
-      // This ensures adapter-style connects (wallet-adapter / Phantom) are acknowledged.
-      try {
-        if (!walletPubKey && typeof window !== 'undefined') {
-          const anyWin: any = window as any
-          const sol = anyWin?.solana
-          if (sol && sol.publicKey) {
-            // sol.publicKey might be an object; coerce to string if possible
-            try {
-              const pk = String(sol.publicKey)
-              // call connectWallet to register the pubkey in SessionManager (no unlock)
-              await connectWallet(pk, 'phantom')
-            } catch {
-              // ignore failures to register; unlock will fail gracefully if still disconnected
-            }
-          }
-        }
-      } catch {
-        // ignore provider inspection errors
+      // MVP rule: no window.solana fallback here.
+      // The wallet-adapter connection must be registered in SessionManager via the central sync.
+      if (!isWalletConnected || !walletPubKey) {
+        throw new Error('Connect requis avant Unlock Vault.')
       }
-      // call the session-level unlock (will request wallet signature)
+
+      // call the session-level unlock (will request wallet signatures)
       await unlockVault()
       // on success, UI will reflect session.isVaultUnlocked()
       setJustUnlocked(true)
@@ -117,17 +101,12 @@ export default function UnlockVaultButton(): JSX.Element | null {
     } finally {
       setLoading(false)
     }
-  }, [unlockVault, walletPubKey, connectWallet])
+  }, [unlockVault, isWalletConnected, walletPubKey])
 
-  // Button visible when a wallet pubkey exists (supports adapter-provided pubkey)
-  // We show the Unlock action if either the session reports a connected wallet
-  // or if a wallet pubkey is available from the provider.
-  if (!isWalletConnected && !walletPubKey) {
-    // Also allow showing the button when a previously persisted identity exists (sj_identity).
-    // This makes the Unlock action discoverable if the provider or identity is present.
-    const hasPersistedIdentity =
-      typeof window !== 'undefined' && !!window.localStorage && !!window.localStorage.getItem('sj_identity')
-    if (!hasPersistedIdentity) return null
+  // Adapter-driven truth only:
+  // Hide Unlock action unless the wallet-adapter connection is active AND SessionManager has the pubkey.
+  if (!isWalletConnected || !walletPubKey) {
+    return null
   }
 
   // If vault already unlocked, show disabled prominent state

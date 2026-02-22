@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-import type { Envelope } from '@sj/crypto'
+import type { Envelope, BuildUnlockResult } from '@sj/crypto'
 import type { EncryptedManifestObjectV1, ManifestEntryV1, ManifestV1 } from '../src/types'
 import {
   deriveManifestKey,
@@ -8,7 +8,7 @@ import {
   decryptManifestV1,
   computeManifestIntegritySha256B64,
 } from '../src/crypto'
-import { appendEntryAndPersist } from '../src/service'
+import { appendEntryAndPersist, loadManifestOrInit } from '../src/service'
 
 /**
  * NOTE:
@@ -245,9 +245,87 @@ describe('@sj/manifest — crypto', () => {
 })
 
 describe('@sj/manifest — service mutex append (MVP)', () => {
+  it('unwrap fails with explicit legacy manifest error when messageTemplateId is SJ_UNLOCK_V1', async () => {
+    const walletPubKey = 'wallet-pubkey'
+    const goodUnlock: BuildUnlockResult = {
+      canonicalObject: {} as any,
+      messageToSign: 'SJ_UNLOCK_V1\n{"wallet":"wallet-pubkey"}',
+    }
+    const anySignatureBytes = new Uint8Array([9, 9, 9, 9])
+
+    // Minimal encrypted manifest object; only envelope.kekDerivation.messageTemplateId is under test.
+    // This represents a legacy manifest that used SJ_UNLOCK_V1 for KEK derivation, which is not
+    // compatible with cross-refresh persistence.
+    const encrypted: EncryptedManifestObjectV1 = {
+      version: 1,
+      kind: 'SJ_MANIFEST',
+      header: {
+        cipher: 'XChaCha20-Poly1305',
+        nonce: 'nonce-b64',
+        aad: { walletPubKey, manifestVersion: 1, context: 'manifest' },
+      },
+      payload: { ciphertextB64: 'cipher-b64' },
+      envelope: {
+        version: 1,
+        walletPubKey,
+        kekDerivation: {
+          method: 'wallet-signature',
+          messageTemplateId: 'SJ_UNLOCK_V1',
+          salt: 'c2FsdA==', // "salt" (dummy)
+          info: 'SJ-KEK-v1',
+        },
+        wrap: {
+          cipher: 'XChaCha20-Poly1305',
+          nonce: 'bm9uY2U=', // "nonce" (dummy)
+          ciphertext: 'Y2lwaGVydGV4dA==', // "ciphertext" (dummy)
+          context: 'manifest-wrap-aad-v1',
+          aadVersion: 1,
+        },
+      },
+      integrity: { sha256B64: 'i' },
+    }
+
+    // In-memory IPFS returns the encrypted object JSON.
+    const catBytes = vi.fn(async () => new TextEncoder().encode(JSON.stringify(encrypted)))
+
+    const deps = {
+      catBytes,
+      addBytes: vi.fn(async () => ({ cid: 'cid-new' })),
+      getManifestCid: vi.fn(() => 'cid-0'),
+      setManifestCid: vi.fn(),
+      // decrypt should never be reached if legacy guard triggers
+      decryptManifestV1: vi.fn(),
+      deriveManifestKey: vi.fn(),
+      encryptManifestV1: vi.fn(),
+      nowIso: () => '2026-01-01T00:00:00.000Z',
+      uuid: () => 'uuid-1',
+    } as any
+
+    await expect(
+      loadManifestOrInit({
+        walletPubKey,
+        signatureBytes: anySignatureBytes,
+        unlock: goodUnlock,
+        deps,
+        origin: 'http://localhost',
+        vaultId: 'local-default',
+        nowMs: Date.parse('2026-01-01T00:00:00.000Z'),
+      })
+    ).rejects.toThrow('Manifest legacy format detected (envelope messageTemplateId=SJ_UNLOCK_V1)')
+
+    expect(deps.decryptManifestV1).not.toHaveBeenCalled()
+    expect(deps.setManifestCid).not.toHaveBeenCalled()
+  })
+
   it('mutex: two concurrent appends do not lose entries (simplified)', async () => {
     const walletPubKey = 'wallet-pubkey'
     const signatureBytes = new Uint8Array([1, 2, 3])
+    const unlock: BuildUnlockResult = {
+      canonicalObject: {
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      } as any,
+      messageToSign: 'SJ_UNLOCK_V1\n{}',
+    }
 
     // In-memory "storage pointer"
     let manifestCid: string | null = 'cid-0'
@@ -382,6 +460,7 @@ describe('@sj/manifest — service mutex append (MVP)', () => {
     const p1 = appendEntryAndPersist({
       walletPubKey,
       signatureBytes,
+      unlock,
       entry: { ...entryBase, fileCid: 'bafy-file-1' },
       deps,
       origin: 'http://localhost',
@@ -392,6 +471,7 @@ describe('@sj/manifest — service mutex append (MVP)', () => {
     const p2 = appendEntryAndPersist({
       walletPubKey,
       signatureBytes,
+      unlock,
       entry: { ...entryBase, fileCid: 'bafy-file-2' },
       deps,
       origin: 'http://localhost',

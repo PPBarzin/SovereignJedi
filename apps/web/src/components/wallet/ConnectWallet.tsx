@@ -3,9 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FC } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { PublicKey } from '@solana/web3.js'
+// wallet-adapter only (no window.solana fallback)
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import useSession from '../../lib/session/useSession'
+import { session as sessionSingleton } from '../../lib/session/SessionManager'
 
  // ProgDec moved to docs/progdec/T03-D001-wallet-ui.md — remove inline decision notes.
  // See docs/progdec/T03-D001-wallet-ui.md for rationale and traceability.
@@ -40,84 +41,97 @@ type Props = {
  * ConnectWallet component
  *
  * Responsibilities:
- * - Detect Phantom (extension) presence.
- * - Support connecting / disconnecting Phantom either via wallet-adapter (preferred)
- *   or direct window.solana API (fallback).
+ * - Wallet-adapter UI only (no passive connection / no window.solana fallback).
  * - Display truncated address + copy action.
  * - Persist last provider to localStorage (`sj_lastWalletProvider`) via helpers.
- * - On disconnect or wallet/account change, clear persisted identity (`sj_identity`).
+ * - On disconnect, clear persisted identity (`sj_identity`).
  *
  * Notes:
- * - This component expects the app may be wrapped in `WalletProvider` from
- *   `@solana/wallet-adapter-react`. If present it will use `useWallet()`. If not,
- *   it falls back to the legacy `window.solana` Phantom API.
+ * - This component requires the app to be wrapped in `WalletProvider` from
+ *   `@solana/wallet-adapter-react` (provided in `_app.tsx`).
+ * - Session synchronization is adapter-driven:
+ *     useEffect([wallet.connected, wallet.publicKey]) ->
+ *       connected+pubkey => session.connectWallet(pubkeyBase58, providerName)
+ *       else             => session.disconnectWallet()
  * - All crypto secrets / private keys are never persisted here.
  */
 export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
-  const wallet = useWallet() // may be a noop if not under WalletProvider
-  const { connectWallet, disconnectWallet } = useSession()
-  const [hasPhantom, setHasPhantom] = useState<boolean>(false)
+  const wallet = useWallet()
+  const { connectWallet, walletPubKey, isVaultUnlocked, isWalletConnected } = useSession()
   const [publicKeyStr, setPublicKeyStr] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // Detect Phantom via window.solana.isPhantom — guard SSR
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const sol = (window as any).solana
-    setHasPhantom(Boolean(sol && sol.isPhantom))
-  }, [])
+  const SJ_DEBUG = String(process.env.NEXT_PUBLIC_SJ_DEBUG).toLowerCase() === 'true'
 
-  // Derive address either from wallet-adapter or window.solana
+  // Adapter-only derived address: only when wallet is actually connected
   const addressFromAdapter = useMemo(() => {
     try {
-      if (wallet && wallet.publicKey) {
+      if (wallet?.connected && wallet.publicKey) {
         return wallet.publicKey.toBase58()
       }
     } catch {
       // ignore
     }
     return null
-  }, [wallet])
+  }, [wallet?.connected, wallet?.publicKey])
 
+  // Debug: track wallet-adapter changes (adapter is the ONLY source of truth here)
   useEffect(() => {
-    // prefer adapter publicKey, fallback to window.solana
-    if (addressFromAdapter) {
-      setPublicKeyStr(addressFromAdapter)
-      // Ensure SessionManager is aware of the adapter-provided pubkey so the Unlock
-      // button appears immediately without requiring a reload.
+    if (!SJ_DEBUG) return
+    // eslint-disable-next-line no-console
+    console.debug('[SJ_DEBUG][ConnectWallet] wallet-adapter state changed', {
+      connected: Boolean(wallet?.connected),
+      adapterPublicKey: addressFromAdapter,
+    })
+  }, [SJ_DEBUG, wallet?.connected, addressFromAdapter])
+
+  // Single synchronization point (adapter -> SessionManager)
+  useEffect(() => {
+    // publicKeyStr is UI-only; it should reflect adapter state only
+    setPublicKeyStr(addressFromAdapter ?? null)
+
+    // Session sync: do NOT call connectWallet until wallet.connected is true
+    if (wallet?.connected && addressFromAdapter) {
       try {
-        // fire-and-forget registration; if it fails, unlock will still fail gracefully
+        if (SJ_DEBUG) {
+          // eslint-disable-next-line no-console
+          console.debug('[SJ_DEBUG][ConnectWallet] sync -> session.connectWallet(from adapter)', {
+            pubKey: addressFromAdapter,
+            provider: 'phantom',
+          })
+        }
         void connectWallet(addressFromAdapter, 'phantom')
+
+        if (SJ_DEBUG) {
+          // eslint-disable-next-line no-console
+          console.debug('[SJ_DEBUG][ConnectWallet] session.instanceId / walletPubKey (post-sync)', {
+            instanceId: (sessionSingleton as any)?.instanceId,
+            walletPubKey: walletPubKey,
+          })
+        }
       } catch {
         /* ignore */
       }
-      return
     }
-    if (typeof window === 'undefined') {
-      setPublicKeyStr(null)
-      return
-    }
-    const sol = (window as any).solana
-    if (sol && sol.isPhantom && sol.publicKey) {
-      try {
-        const pk = new PublicKey(sol.publicKey).toBase58()
-        setPublicKeyStr(pk)
-        // Register the detected pubkey with SessionManager so the UI (Unlock button)
-        // updates immediately and doesn't require a manual reload.
-        try {
-          void connectWallet(pk, 'phantom')
-        } catch {
-          // ignore registration failures; fallback behavior will surface errors to user
-        }
-      } catch {
-        setPublicKeyStr(null)
-      }
-    } else {
-      setPublicKeyStr(null)
-    }
-  }, [addressFromAdapter, connectWallet])
+
+    // IMPORTANT (MVP):
+    // Do NOT auto-disconnect SessionManager when the adapter is temporarily not connected.
+    // Disconnect should come from an explicit user action (wallet.disconnect())
+    // or provider events (disconnect / accountChanged(null)) handled centrally.
+  }, [SJ_DEBUG, wallet?.connected, addressFromAdapter, connectWallet, walletPubKey])
+
+  // Debug: track SessionManager pubkey changes (the one used by upload/manifest)
+  useEffect(() => {
+    if (!SJ_DEBUG) return
+    // eslint-disable-next-line no-console
+    console.debug('[SJ_DEBUG][ConnectWallet] session state changed', {
+      sessionWalletPubKey: walletPubKey,
+      isVaultUnlocked,
+      isWalletConnected,
+    })
+  }, [SJ_DEBUG, walletPubKey, isVaultUnlocked, isWalletConnected])
 
   // Provider event handling has been centralized in the session layer (useSession)
   // to avoid duplicate listeners and race conditions. ConnectWallet remains a UI
@@ -142,59 +156,17 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
     setError(null)
     setConnecting(true)
     try {
-      // Prefer wallet-adapter (if used by the app)
+      // Wallet-adapter only: connect via adapter.
       if (wallet && wallet.connect && !wallet.connected) {
         await wallet.connect()
-        // wallet.connect() should populate wallet.publicKey and connected flag
-        try {
-          const pk = wallet && (wallet as any).publicKey ? (wallet as any).publicKey.toBase58() : null
-          if (pk) {
-            // Register the connected pubkey with SessionManager (no unlock)
-            try {
-              await connectWallet(pk, 'phantom')
-            } catch {
-              // ignore
-            }
-          }
-        } catch {
-          // ignore
-        }
         setLastProviderIfPhantom()
         return
       }
-
-      // Fallback to direct Phantom extension
-      if (typeof window !== 'undefined') {
-        const sol = (window as any).solana
-        if (!sol) {
-          setError('No Phantom detected')
-          setConnecting(false)
-          return
-        }
-        // Phantom connect returns an object with publicKey
-        const res = await sol.connect()
-        if (res && res.publicKey) {
-          try {
-            const pk = new PublicKey(res.publicKey).toBase58()
-            setPublicKeyStr(pk)
-            setLastProviderIfPhantom()
-            try {
-              // Register with SessionManager (no unlock)
-              await connectWallet(pk, 'phantom')
-            } catch {
-              // ignore
-            }
-          } catch {
-            // ignore
-          }
-          setConnecting(false)
-          return
-        }
+      if (!wallet || !wallet.connect) {
+        setError('Wallet adapter unavailable')
+        return
       }
-
-      setError('Unable to connect to wallet')
     } catch (err: any) {
-      // User might reject or other error
       const msg = err?.message ?? String(err)
       setError(msg)
     } finally {
@@ -205,35 +177,20 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
   const disconnect = useCallback(async () => {
     setError(null)
     try {
-      // Prefer wallet-adapter disconnect
+      // Wallet-adapter only: disconnect via adapter.
       if (wallet && wallet.disconnect && wallet.connected) {
         await wallet.disconnect()
-      } else if (typeof window !== 'undefined') {
-        const sol = (window as any).solana
-        if (sol && sol.isPhantom && sol.disconnect) {
-          try {
-            await sol.disconnect()
-          } catch {
-            // ignore disconnect errors
-          }
-        }
       }
     } catch (err: any) {
-      // ignore minor disconnect errors but surface if relevant
       setError(err?.message ?? String(err))
     } finally {
-      // Ensure SessionManager clears in-memory vault and pubkey state
-      try {
-        disconnectWallet()
-      } catch {
-        // ignore
-      }
+      // SessionManager must follow adapter state via the sync effect (do not call disconnectWallet here).
       // Clear identity and last provider per spec (no secrets persisted)
       clearIdentity()
       clearLastWalletProvider()
       setPublicKeyStr(null)
     }
-  }, [wallet, disconnectWallet])
+  }, [wallet])
 
   const copyAddress = useCallback(async () => {
     if (!publicKeyStr) return
@@ -279,16 +236,14 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
           {!publicKeyStr ? (
             <>
               <WalletMultiButton />
-              {!hasPhantom && (
-                <a
-                  href="https://phantom.app/download"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={styles.installLink}
-                >
-                  Install Phantom
-                </a>
-              )}
+              <a
+                href="https://phantom.app/download"
+                target="_blank"
+                rel="noreferrer"
+                style={styles.installLink}
+              >
+                Install Phantom
+              </a>
             </>
           ) : (
             <>

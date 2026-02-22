@@ -74,7 +74,7 @@ export type EncryptedManifestObjectV1 = {
     walletPubKey: string
     kekDerivation: {
       method: 'wallet-signature'
-      messageTemplateId: 'SJ_UNLOCK_V1'
+      messageTemplateId: 'SJ_UNLOCK_V1' | 'SJ_VAULT_ROOT_V1'
       salt: string // b64
       info: 'SJ-KEK-v1'
     }

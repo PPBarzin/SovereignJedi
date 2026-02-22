@@ -1,5 +1,5 @@
 import { addBytes as ipfsAddBytes, catBytes as ipfsCatBytes } from '@sj/ipfs'
-import { buildUnlockMessageV1, deriveKekFromUnlockSignature, sha256 } from '@sj/crypto'
+import { deriveVaultRootKekFromSignature, sha256 } from '@sj/crypto'
 import type { BuildUnlockResult } from '@sj/crypto'
 
 import type {
@@ -7,15 +7,16 @@ import type {
   ManifestEntryV1,
   ManifestServiceDeps,
   ManifestV1,
-} from './types'
-import { getManifestCid as getManifestCidDefault, setManifestCid as setManifestCidDefault } from './storage'
-import { createMutex } from './internal/mutex'
-import { deriveManifestKey, decryptManifestV1, encryptManifestV1 as encryptManifestV1Crypto } from './crypto'
+} from './types.js'
+import { getManifestCid as getManifestCidDefault, setManifestCid as setManifestCidDefault } from './storage.js'
+import { createMutex } from './internal/mutex.js'
+import { deriveManifestKey, encryptManifestV1 as encryptManifestV1Crypto, decryptManifestV1 } from './crypto.js'
 
 type UnwrapManifestKeyFn = (params: {
   encrypted: EncryptedManifestObjectV1
   walletPubKey: string
   signatureBytes: Uint8Array
+  unlock: BuildUnlockResult
   nowMs: number
   origin: string
   vaultId: string
@@ -145,6 +146,14 @@ function assertNonEmptyString(name: string, value: string): void {
   if (!value || String(value).trim().length === 0) throw new Error(`${name} must be a non-empty string`)
 }
 
+function isSjDebugEnabled(): boolean {
+  try {
+    return String(process.env.NEXT_PUBLIC_SJ_DEBUG).toLowerCase() === 'true'
+  } catch {
+    return false
+  }
+}
+
 type UnlockLike = BuildUnlockResult
 
 export type LoadManifestResult = {
@@ -189,7 +198,9 @@ async function buildManifestWrapEnvelope(params: {
     v: aadVersion,
     context,
     walletPubKey,
-    messageTemplateId: unlock?.canonicalObject?.type ? 'SJ_UNLOCK_V1' : 'SJ_UNLOCK_V1',
+    // Must reflect the KEK derivation template actually used for the manifest key wrap:
+    // we derive the KEK from the stable Vault Root signature (SJ_VAULT_ROOT_V1).
+    messageTemplateId: 'SJ_VAULT_ROOT_V1',
   }
   const wrapAadBytes = encodeJsonToBytes(wrapAadObj)
 
@@ -206,7 +217,7 @@ async function buildManifestWrapEnvelope(params: {
     walletPubKey,
     kekDerivation: {
       method: 'wallet-signature',
-      messageTemplateId: 'SJ_UNLOCK_V1',
+      messageTemplateId: 'SJ_VAULT_ROOT_V1',
       salt: toBase64(saltBytes),
       info: 'SJ-KEK-v1',
     },
@@ -227,39 +238,40 @@ async function unwrapManifestKey(params: {
   encrypted: EncryptedManifestObjectV1
   walletPubKey: string
   signatureBytes: Uint8Array
+  unlock: BuildUnlockResult
   nowMs: number
   origin: string
   vaultId: string
 }): Promise<Uint8Array> {
-  const { encrypted, walletPubKey, signatureBytes, nowMs, origin, vaultId } = params
+  const { encrypted, walletPubKey, signatureBytes } = params
 
   const env = encrypted.envelope
   if (!env || env.version !== 1) throw new Error('unwrapManifestKey: missing envelope')
   if (env.walletPubKey !== walletPubKey) throw new Error('unwrapManifestKey: walletPubKey mismatch')
+
+  // Migration / compatibility guardrail:
+  // - New MVP uses a stable Vault Root signature (SJ_VAULT_ROOT_V1) to derive a stable KEK across refresh.
+  // - Older manifests may have been wrapped with SJ_UNLOCK_V1. We must refuse explicitly (no silent reset).
+  const tpl = env.kekDerivation?.messageTemplateId ?? ''
+  if (tpl === 'SJ_UNLOCK_V1') {
+    throw new Error(
+      'Manifest legacy format detected (envelope messageTemplateId=SJ_UNLOCK_V1). ' +
+        'This manifest cannot be opened after refresh. Please re-initialize your manifest pointer.'
+    )
+  }
+  if (tpl !== 'SJ_VAULT_ROOT_V1') {
+    throw new Error(`unwrapManifestKey: unsupported envelope messageTemplateId: ${tpl}`)
+  }
 
   const saltBytes = fromBase64(env.kekDerivation?.salt ?? '')
   if (!(saltBytes instanceof Uint8Array) || saltBytes.byteLength === 0) {
     throw new Error('unwrapManifestKey: invalid envelope.kekDerivation.salt')
   }
 
-  // Rebuild unlock message to re-derive KEK (OQ-06 enforced by deriveKekFromUnlockSignature).
-  const issuedAt = new Date(nowMs).toISOString()
-  const expiresAt = new Date(nowMs + 10 * 60 * 1000).toISOString()
-
-  const unlock = await buildUnlockMessageV1({
-    origin,
-    wallet: walletPubKey,
-    vaultId,
-    issuedAt,
-    expiresAt,
-  })
-
-  const kek = await deriveKekFromUnlockSignature({
-    signatureBytes,
-    saltBytes,
-    unlock,
-    nowMs,
-  })
+  // Stable KEK derivation (Vault Root):
+  // - signatureBytes MUST be a signature of SJ_VAULT_ROOT_V1 messageToSign (stable across refresh)
+  // - no TTL enforcement here (Unlock TTL remains separate and unchanged)
+  const kek = await deriveVaultRootKekFromSignature({ signatureBytes })
 
   const sodium = await getSodium()
   const wrap = env.wrap
@@ -274,7 +286,7 @@ async function unwrapManifestKey(params: {
     v: aadVersion,
     context,
     walletPubKey,
-    messageTemplateId: env.kekDerivation?.messageTemplateId ?? 'SJ_UNLOCK_V1',
+    messageTemplateId: env.kekDerivation?.messageTemplateId ?? 'SJ_VAULT_ROOT_V1',
   }
   const wrapAadBytes = encodeJsonToBytes(wrapAadObj)
 
@@ -302,6 +314,7 @@ async function resolveManifestKey(params: {
   encrypted: EncryptedManifestObjectV1
   walletPubKey: string
   signatureBytes: Uint8Array
+  unlock: BuildUnlockResult
   nowMs: number
   origin: string
   vaultId: string
@@ -314,6 +327,7 @@ async function resolveManifestKey(params: {
     encrypted: params.encrypted,
     walletPubKey: params.walletPubKey,
     signatureBytes: params.signatureBytes,
+    unlock: params.unlock,
     nowMs: params.nowMs,
     origin: params.origin,
     vaultId: params.vaultId,
@@ -341,11 +355,19 @@ const defaultDeps: ManifestServiceDeps = {
 
   deriveManifestKey: async (kek) => deriveManifestKey(kek),
 
-  encryptManifestV1: async ({ manifest, manifestKey, walletPubKey }: any) => {
-    throw new Error(
-      'encryptManifestV1 is service-dependent because it requires the service-built wrap envelope. ' +
-        'Callers must provide an injected deps.encryptManifestV1 or use the service internal default wrapper at call-site.'
-    )
+  encryptManifestV1: async ({ manifest, manifestKey, walletPubKey, envelope }: any) => {
+    // Default production behavior:
+    // The service is responsible for constructing the wrap envelope, then calls crypto.encryptManifestV1.
+    // This keeps unit tests free to inject their own implementation while avoiding runtime failures.
+    if (!envelope) {
+      throw new Error('encryptManifestV1: missing wrap envelope (service bug)')
+    }
+    return encryptManifestV1Crypto({
+      manifest,
+      manifestKey,
+      walletPubKey,
+      envelope,
+    } as any)
   },
 
   decryptManifestV1: async ({ encrypted, manifestKey, walletPubKey }) =>
@@ -384,6 +406,7 @@ const defaultDeps: ManifestServiceDeps = {
 export async function loadManifestOrInit(params: {
   walletPubKey: string
   signatureBytes: Uint8Array
+  unlock: BuildUnlockResult
   deps?: Partial<ManifestServiceDeps>
   origin?: string
   vaultId?: string
@@ -392,15 +415,33 @@ export async function loadManifestOrInit(params: {
   const walletPubKey = String(params.walletPubKey ?? '').trim()
   assertNonEmptyString('loadManifestOrInit:walletPubKey', walletPubKey)
 
+  // We keep the signatureBytes param name for backward call-site compatibility, but it now represents:
+  // - Vault Root signature bytes (SJ_VAULT_ROOT_V1), not SJ_UNLOCK_V1.
+  //
+  // Unlock is still provided for API continuity, but is NOT used to derive the stable KEK.
+  // (Unlock TTL remains separate and unchanged; this service does not modify it.)
+  if (!params.unlock || !params.unlock.canonicalObject || !params.unlock.messageToSign) {
+    throw new Error('loadManifestOrInit: missing unlock material (BuildUnlockResult)')
+  }
+
   const deps: ManifestServiceDeps = { ...defaultDeps, ...(params.deps ?? {}) } as any
   const origin = params.origin ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
   const vaultId = params.vaultId ?? 'local-default'
   const nowMs = params.nowMs ?? Date.now()
 
   const existingCid = deps.getManifestCid(walletPubKey)
+  if (isSjDebugEnabled()) {
+    // eslint-disable-next-line no-console
+    console.log('[SJ_DEBUG][Manifest]', {
+      walletPubKey,
+      vaultId,
+      manifestCidFromStorage: existingCid,
+      action: existingCid ? 'load-existing' : 'init-new',
+    })
+  }
 
   if (!existingCid) {
-    // INIT: create empty manifest, derive KEK and ManifestKey, wrap it, encrypt manifest, upload, store pointer.
+    // INIT: create empty manifest, derive stable vault-root KEK, derive ManifestKey, wrap it, encrypt manifest, upload, store pointer.
     const createdAt = deps.nowIso()
     const manifest: ManifestV1 = {
       version: 1,
@@ -410,52 +451,41 @@ export async function loadManifestOrInit(params: {
       entries: [],
     }
 
-    // Derive KEK (must go through unlock + deriveKekFromUnlockSignature for OQ-06)
-    const saltBytes = (await getSodium()).randombytes_buf(32) as Uint8Array
-    const issuedAt = new Date(nowMs).toISOString()
-    const expiresAt = new Date(nowMs + 10 * 60 * 1000).toISOString()
-
-    const unlock = await buildUnlockMessageV1({
-      origin,
-      wallet: walletPubKey,
-      vaultId,
-      issuedAt,
-      expiresAt,
-    })
-
-    const kek = await deriveKekFromUnlockSignature({
-      signatureBytes: params.signatureBytes,
-      saltBytes,
-      unlock,
-      nowMs,
-    })
+    // Stable KEK (Vault Root) derived from SJ_VAULT_ROOT_V1 signature (refaisable après refresh).
+    const kek = await deriveVaultRootKekFromSignature({ signatureBytes: params.signatureBytes })
 
     const manifestKey = await deps.deriveManifestKey(kek)
+
     const injectedSodium = await resolveSodiumFromDeps(deps)
+    const sodium = injectedSodium ?? (await getSodium())
+    const saltBytes = sodium.randombytes_buf(32) as Uint8Array
+
     const envelope = await buildManifestWrapEnvelope({
       walletPubKey,
       kek,
       manifestKey,
-      unlock,
+      unlock: params.unlock,
       saltBytes,
       sodium: injectedSodium ?? undefined,
     })
 
-    const encryptWithDefault = deps.encryptManifestV1 ?? (async ({ manifest, manifestKey, walletPubKey }: any) => {
-      // Default path: use crypto implementation directly.
-      // The service constructs the required envelope and passes it through.
-      return encryptManifestV1Crypto({
-        manifest,
-        manifestKey,
-        walletPubKey,
-        envelope,
-      } as any)
-    })
+    const encryptWithDefault =
+      deps.encryptManifestV1 ??
+      (async ({ manifest, manifestKey, walletPubKey, envelope }: any) => {
+        // Default path: use crypto implementation directly.
+        return encryptManifestV1Crypto({
+          manifest,
+          manifestKey,
+          walletPubKey,
+          envelope,
+        } as any)
+      })
 
     const encrypted = await encryptWithDefault({
       manifest,
       manifestKey,
       walletPubKey,
+      envelope,
     } as any)
 
     const bytes = encodeJsonToBytes(encrypted)
@@ -481,6 +511,7 @@ export async function loadManifestOrInit(params: {
     encrypted: encryptedObj,
     walletPubKey,
     signatureBytes: params.signatureBytes,
+    unlock: params.unlock,
     nowMs,
     origin,
     vaultId,
@@ -514,6 +545,7 @@ export async function loadManifestOrInit(params: {
 export async function appendEntryAndPersist(params: {
   walletPubKey: string
   signatureBytes: Uint8Array
+  unlock: BuildUnlockResult
   entry: Omit<ManifestEntryV1, 'addedAt' | 'entryId'> & Partial<Pick<ManifestEntryV1, 'addedAt' | 'entryId'>>
   deps?: Partial<ManifestServiceDeps>
   origin?: string
@@ -522,6 +554,9 @@ export async function appendEntryAndPersist(params: {
 }): Promise<{ manifest: ManifestV1; manifestCid: string }> {
   const walletPubKey = String(params.walletPubKey ?? '').trim()
   assertNonEmptyString('appendEntryAndPersist:walletPubKey', walletPubKey)
+  if (!params.unlock || !params.unlock.canonicalObject || !params.unlock.messageToSign) {
+    throw new Error('appendEntryAndPersist: missing unlock material (BuildUnlockResult)')
+  }
 
   const deps: ManifestServiceDeps = { ...defaultDeps, ...(params.deps ?? {}) } as any
   const origin = params.origin ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
@@ -537,6 +572,7 @@ export async function appendEntryAndPersist(params: {
       const init = await loadManifestOrInit({
         walletPubKey,
         signatureBytes: params.signatureBytes,
+        unlock: params.unlock,
         deps,
         origin,
         vaultId,
@@ -565,6 +601,7 @@ export async function appendEntryAndPersist(params: {
       encrypted: encryptedObj,
       walletPubKey,
       signatureBytes: params.signatureBytes,
+      unlock: params.unlock,
       nowMs,
       origin,
       vaultId,
@@ -617,53 +654,46 @@ export async function appendEntryAndPersist(params: {
 
     manifest.updatedAt = deps.nowIso()
 
-    // Re-wrap manifest key with a fresh salt per manifest update (keeps KEK derivation bound to current proof).
-    // NOTE: We keep method wallet-signature + SJ_UNLOCK_V1; salt stored in envelope.
+    // Re-wrap manifest key with a fresh salt per manifest update.
+    //
+    // IMPORTANT (MVP persistence across refresh):
+    // - Manifest must be unwrap/decryptable after refresh.
+    // - Therefore KEK derivation for the manifest MUST be stable across sessions, and MUST NOT depend on SJ_UNLOCK_V1.
+    // - We derive the vault-root KEK from the stable Vault Root signature (SJ_VAULT_ROOT_V1).
+    //
+    // Unlock (SJ_UNLOCK_V1) remains separate and is used only for session gating / UX.
     const injectedSodium = await resolveSodiumFromDeps(deps)
     const sodium = injectedSodium ?? (await getSodium())
     const saltBytes = sodium.randombytes_buf(32) as Uint8Array
 
-    const issuedAt = new Date(nowMs).toISOString()
-    const expiresAt = new Date(nowMs + 10 * 60 * 1000).toISOString()
-
-    const unlock = await buildUnlockMessageV1({
-      origin,
-      wallet: walletPubKey,
-      vaultId,
-      issuedAt,
-      expiresAt,
-    })
-
-    const kek = await deriveKekFromUnlockSignature({
-      signatureBytes: params.signatureBytes,
-      saltBytes,
-      unlock,
-      nowMs,
-    })
+    const kek = await deriveVaultRootKekFromSignature({ signatureBytes: params.signatureBytes })
 
     const envelope = await buildManifestWrapEnvelope({
       walletPubKey,
       kek,
       manifestKey,
-      unlock,
+      unlock: params.unlock,
       saltBytes,
       sodium: injectedSodium ?? undefined,
     })
 
     // Encrypt new manifest object (integrity computed inside)
-    const encryptWithDefault = deps.encryptManifestV1 ?? (async ({ manifest, manifestKey, walletPubKey }: any) => {
-      return encryptManifestV1Crypto({
-        manifest,
-        manifestKey,
-        walletPubKey,
-        envelope,
-      } as any)
-    })
+    const encryptWithDefault =
+      deps.encryptManifestV1 ??
+      (async ({ manifest, manifestKey, walletPubKey, envelope }: any) => {
+        return encryptManifestV1Crypto({
+          manifest,
+          manifestKey,
+          walletPubKey,
+          envelope,
+        } as any)
+      })
 
     const newEncrypted = await encryptWithDefault({
       manifest,
       manifestKey,
       walletPubKey,
+      envelope,
     } as any)
 
     // Upload new manifest bytes

@@ -7,6 +7,7 @@ Résultat attendu (MVP) :
 - À chaque upload (Task 5), une **entrée** est ajoutée au manifest.
 - Le manifest est **chiffré côté client**, puis **uploadé sur IPFS**, donnant un **CID de manifest**.
 - **My files** liste les entrées issues du manifest (plus de liste mock).
+- **Cross-refresh** : après `Ctrl+F5`, un nouvel `Unlock` permet de recharger/déchiffrer le manifest et de retrouver les entrées.
 
 ---
 
@@ -52,7 +53,29 @@ Chemins :
 - Valeur : `manifestCid` (string)
 - Wrapper : `getManifestCid()` / `setManifestCid()` / `removeManifestCid()`
 
-#### 2.3 Crypto manifest (alignement strict Task 5)
+#### 2.3 Séparation Verify / Unlock / Vault Root (persistance cross-refresh)
+Pour garantir la persistance inter-refresh **sans persister de secrets**, on sépare 3 racines :
+
+1) **Proof-of-control / Verify** (UX gating)
+- Sert à prouver la possession du wallet.
+- Peut utiliser un message distinct.
+- **Ne participe pas** à la dérivation de KEK.
+
+2) **Unlock Vault (SJ_UNLOCK_V1)** (session gating, volatile)
+- Message **volatile** (inclut des champs variables).
+- TTL/expiry appliqué (OQ-06).
+- Sert à l’état `VaultUnlocked` en mémoire et au gating “actions vault”.
+- **Ne doit pas** être utilisé pour dériver une KEK stable cross-refresh.
+
+3) **Vault Root (SJ_VAULT_ROOT_V1)** (racine stable pour le manifest)
+- Nouveau message stable : `SJ_VAULT_ROOT_V1` (pas de `issuedAt/expiresAt/nonce`).
+- Signature **refaisable après refresh**.
+- Conservé uniquement **en mémoire session** (non persisté).
+- C’est la **seule racine valide** utilisée pour dériver la KEK stable nécessaire à l’ouverture du manifest après refresh.
+
+> Important : on ne persiste ni KEK, ni signatures (Unlock/VaultRoot). Le seul état persistant est le pointeur CID.
+
+#### 2.4 Crypto manifest (alignement strict Task 5)
 Le manifest est chiffré côté client :
 - Chiffrement : **XChaCha20-Poly1305** via `libsodium-wrappers`
 - AAD (AEAD) : canonicalization RFC8785 via `canonicalize` (même lib que Task 4/5)
@@ -62,6 +85,11 @@ Le manifest est chiffré côté client :
 - `ManifestKey = HKDF(KEK, salt=null, info="SJ-MANIFEST-v1", length=32)`
 - HKDF : `@sj/crypto.deriveKeyHKDF`
 
+##### KEK utilisée par le manifest (Vault Root)
+- Le manifest utilise une KEK dérivée de la signature de `SJ_VAULT_ROOT_V1`.
+- L’envelope du manifest reflète correctement :
+  - `kekDerivation.messageTemplateId = "SJ_VAULT_ROOT_V1"`
+
 ##### Integrity (règle identique à Task 5)
 **Règle impérative :** strictement identique à `EncryptedIpfsObjectV1` (Task 5)
 - Construire un `hashBasis` qui **exclut le champ** `integrity`
@@ -70,11 +98,17 @@ Le manifest est chiffré côté client :
 
 > Pas d’amélioration silencieuse (ex: pas de `canonicalize(hashBasis)`), car la cohérence interne prime.
 
-#### 2.4 Concurrence (MVP)
+#### 2.5 Migration (manifest legacy SJ_UNLOCK_V1)
+Pour éviter toute destruction silencieuse :
+- Si un manifest existant a `envelope.kekDerivation.messageTemplateId = "SJ_UNLOCK_V1"`,
+  alors l’app **échoue explicitement** avec un message clair.
+- Aucun reset automatique, aucun upload d’un nouveau manifest, aucun changement du pointeur local.
+
+#### 2.6 Concurrence (MVP)
 - Mutex **in-tab (mémoire)** par wallet + stratégie `read → merge → write`
 - Pas de lock multi-onglet en MVP (risque “last write wins” si deux onglets)
 
-#### 2.5 Politique d’erreur (guardrail)
+#### 2.7 Politique d’erreur (guardrail)
 En cas d’erreur (IPFS KO, decrypt KO, integrity KO) :
 - on bloque
 - **on ne modifie pas** le pointeur local (`manifestCid`)
@@ -99,6 +133,19 @@ Comportement :
 
 ---
 
+### 4) Debug (SJ_DEBUG) : traçage des messages signés (hash seulement)
+Pour confirmer la stabilité/variabilité des messages signés sans exposer de contenu sensible :
+- Sous `NEXT_PUBLIC_SJ_DEBUG=true`, l’app log :
+  - `sha256B64(messageToSign)` pour `SJ_UNLOCK_V1`
+  - `sha256B64(messageToSign)` pour `SJ_VAULT_ROOT_V1`
+
+⚠️ On ne log jamais :
+- le `messageToSign` brut
+- la signature
+- des métadonnées de fichiers
+
+---
+
 ## Comment tester (manuel)
 
 ### Prérequis
@@ -111,7 +158,7 @@ Comportement :
 - Ex: `/ip4/127.0.0.1/tcp/15002/ws/p2p/<PEER_ID>`
 
 3) Debug optionnel
-- `NEXT_PUBLIC_SJ_DEBUG=true` active les logs debug (sinon pas de logs sensibles).
+- `NEXT_PUBLIC_SJ_DEBUG=true` active les logs debug.
 
 ### Étapes
 1. Lancer le front :
@@ -120,7 +167,7 @@ Comportement :
 2. Dans l’UI :
 - Connect wallet
 - Sign to Verify
-- Unlock Vault
+- Unlock Vault (déclenche également la signature Vault Root en MVP)
 
 3. Vérifier “My files” :
 - Au premier unlock, si aucun pointeur local : init manifest → upload manifest → pointeur stocké.
@@ -134,6 +181,10 @@ Comportement :
 5. Refresh navigateur :
 - Refaire Verify + Unlock
 - “My files” doit refléter les entrées issues du manifest (pas de liste mock).
+
+6. Migration legacy (si applicable) :
+- Si l’app détecte un manifest legacy basé sur `SJ_UNLOCK_V1`, elle affiche une erreur explicite.
+- Pour repartir : supprimer le pointeur `sj:manifestCid:<walletPubKey>` et re-unlock pour init.
 
 ---
 

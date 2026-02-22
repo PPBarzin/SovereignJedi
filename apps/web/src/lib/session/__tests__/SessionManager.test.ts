@@ -1,41 +1,39 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as nacl from "tweetnacl";
 import bs58 from "bs58";
 
-import SessionManager, { MESSAGE_TO_SIGN } from "../SessionManager";
-
-function makeMockLocalStorage() {
-  const store: Record<string, string> = {};
-  return {
-    getItem(key: string) {
-      return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
-    },
-    setItem(key: string, value: string) {
-      store[key] = String(value);
-    },
-    removeItem(key: string) {
-      delete store[key];
-    },
-    clear() {
-      for (const k of Object.keys(store)) delete store[k];
-    },
-  };
-}
+import SessionManager from "../SessionManager";
 
 describe("SessionManager (Task 3.5) - unit tests", () => {
   beforeEach(() => {
-    // Replace localStorage with a deterministic mock to avoid environment differences
-    // @ts-ignore - test environment
-    globalThis.localStorage = makeMockLocalStorage();
-    // Ensure no accidental provider on window
     // @ts-ignore
-    if (typeof globalThis.window !== "undefined") (globalThis as any).window.solana = undefined;
+    globalThis.localStorage = (function () {
+      let store: Record<string, string> = {};
+      return {
+        getItem: (key: string) => store[key] ?? null,
+        setItem: (key: string, val: string) => {
+          store[key] = String(val);
+        },
+        removeItem: (key: string) => {
+          delete store[key];
+        },
+        clear: () => {
+          store = {};
+        },
+      };
+    })();
+  });
+
+  afterEach(() => {
+    // @ts-ignore
+    globalThis.localStorage.clear?.();
   });
 
   it("initial state: vault locked and not connected", () => {
     const sm = new SessionManager();
-    expect(sm.isWalletConnected()).toBe(false);
     expect(sm.isVaultUnlocked()).toBe(false);
+    expect(sm.isWalletConnected()).toBe(false);
+    expect(sm.getWalletPubKey()).toBeNull();
     expect(sm.getVerified()).toBeNull();
   });
 
@@ -108,10 +106,11 @@ describe("SessionManager (Task 3.5) - unit tests", () => {
     const kp = nacl.sign.keyPair();
     const pubKey = bs58.encode(kp.publicKey);
 
-    await sm.connectWallet(pubKey);
+    await sm.connectWallet(pubKey, "phantom");
     sm.setSigner(async (m) => nacl.sign.detached(m, kp.secretKey));
     await sm.unlockVault();
     expect(sm.isVaultUnlocked()).toBe(true);
+
     sm.lockVault();
     expect(sm.isVaultUnlocked()).toBe(false);
   });
@@ -121,20 +120,17 @@ describe("SessionManager (Task 3.5) - unit tests", () => {
     const kp = nacl.sign.keyPair();
     const pubKey = bs58.encode(kp.publicKey);
 
-    await sm.connectWallet(pubKey);
+    await sm.connectWallet(pubKey, "phantom");
     sm.setSigner(async (m) => nacl.sign.detached(m, kp.secretKey));
     await sm.unlockVault();
-
     expect(sm.isWalletConnected()).toBe(true);
-    expect(sm.isVaultUnlocked()).toBe(true);
     expect(sm.getVerified()).not.toBeNull();
 
     sm.disconnectWallet();
-
     expect(sm.isWalletConnected()).toBe(false);
+    expect(sm.getWalletPubKey()).toBeNull();
     expect(sm.isVaultUnlocked()).toBe(false);
     expect(sm.getVerified()).toBeNull();
-    // storage cleared
     // @ts-ignore
     expect(globalThis.localStorage.getItem("sj_verified_v1")).toBeNull();
   });
@@ -149,20 +145,38 @@ describe("SessionManager (Task 3.5) - unit tests", () => {
     await expect(sm.unlockVault()).rejects.toThrow(/No signature available/);
   });
 
-  it("unlockVault throws when signature verification fails", async () => {
+  it("unlockVault throws when unlock message is expired (OQ-06)", async () => {
     const sm = new SessionManager();
     const kp = nacl.sign.keyPair();
     const pubKey = bs58.encode(kp.publicKey);
 
     await sm.connectWallet(pubKey);
 
-    // Inject a signer that returns a random/invalid signature (wrong size)
-    sm.setSigner(async () => {
-      // produce random bytes
-      return nacl.randomBytes(64);
-    });
+    // Inject a signer that returns bytes; the failure must be caused by OQ-06 expiry check.
+    sm.setSigner(async () => nacl.randomBytes(64));
 
-    await expect(sm.unlockVault()).rejects.toThrow(/Signature verification failed/);
+    // Use the SessionManager test-only hook to inject an already-expired unlock message.
+    sm.setUnlockBuilderForTests(async () => ({
+      canonicalObject: {
+        sj: "SovereignJedi",
+        ver: "1",
+        type: "UNLOCK",
+        origin: "http://localhost:1620",
+        wallet: pubKey,
+        nonce: "AAAA",
+        issuedAt: "2026-01-01T00:00:00.000Z",
+        expiresAt: "2026-01-01T00:00:00.000Z",
+        vaultId: "local-default",
+      },
+      messageToSign: "SJ_UNLOCK_V1\n{}",
+    }));
+
+    try {
+      await expect(sm.unlockVault()).rejects.toThrow(/Unlock message expired/);
+    } finally {
+      // Cleanup: remove injected builder to avoid cross-test leakage
+      sm.setUnlockBuilderForTests(undefined);
+    }
   });
 
   it("connecting a different wallet clears previously persisted Verified signal", async () => {
@@ -186,11 +200,5 @@ describe("SessionManager (Task 3.5) - unit tests", () => {
     // @ts-ignore
     const raw = globalThis.localStorage.getItem("sj_verified_v1");
     expect(raw).toBeNull();
-  });
-
-  it("MESSAGE_TO_SIGN matches expected stable template", () => {
-    // simple sanity check to guarantee the canonical message hasn't changed unexpectedly
-    expect(MESSAGE_TO_SIGN).toContain("SOVEREIGN_JEDI_UNLOCK_VAULT_V1");
-    expect(MESSAGE_TO_SIGN).toContain("déverrouille temporairement votre coffre");
   });
 });

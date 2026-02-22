@@ -113,3 +113,83 @@ Ce document trace les décisions de programmation significatives pour la Task 6.
   - UX : message d’erreur actionnable (“réessayer”).
   - Sécurité / fiabilité : pas de perte silencieuse de l’inventaire.
 - **Statut** : Accepted
+
+---
+
+## T06-D007 — Separation of Verify and Unlock cryptographic roots (manifest KEK derivation)
+
+- **Constat** : Le unwrap du manifest échoue si `Unlock Vault` ne signe pas `SJ_UNLOCK_V1` (la KEK dérivée est différente, donc le ciphertext du wrap ne peut pas être déchiffré).
+- **Décision** :
++  - **Proof-of-control / Verify**
++    - Sert uniquement à prouver la possession du wallet (gating UX).
++    - Ne participe pas à la dérivation de KEK.
++    - Peut utiliser un message distinct (non `SJ_UNLOCK_V1`).
++  - **Unlock Vault**
++    - Doit obligatoirement signer `buildUnlockMessageV1().messageToSign` (`SJ_UNLOCK_V1`).
++    - Cette signature est la **seule** source valide pour dériver la KEK (`deriveKekFromUnlockSignature`).
++    - Non persistée : conservée uniquement en mémoire session.
++    - Le `BuildUnlockResult` (canonicalObject + messageToSign) est conservé en mémoire session.
++  - **Manifest**
++    - Ne reconstruit jamais un unlock arbitraire.
++    - Reçoit explicitement `unlock: BuildUnlockResult` + `signatureBytes` (issus de l’étape Unlock) pour unwrap le `ManifestKey`.
++    - Refuse explicitement toute dérivation KEK basée sur une signature persistée (ex: `loadIdentity`) si elle ne signe pas `SJ_UNLOCK_V1`.
++- **Implications** :
++  - L’état de session doit exposer `lastUnlock` et `lastUnlockSignatureBytes`.
++  - `loadIdentity()` ne doit pas être utilisé pour dériver la KEK du manifest.
++  - Toute tentative de dérivation avec une signature non conforme doit échouer explicitement (message actionnable).
++- **Raison** :
++  - Cohérence cryptographique (racine unique pour la KEK).
++  - Séparation UX (Verify) / crypto root (Unlock).
++  - Prépare la migration vers pointeur on-chain/IPNS.
++  - Respect de l’esprit OQ-11 : pas de persistance de matériaux cryptographiques sensibles.
++- **Statut** : Accepted
++
++---
++
+## T06-D008 — Introduction d’un Vault Root stable (SJ_VAULT_ROOT_V1) pour persistance inter-refresh du manifest
+
+1️⃣ **Constat**
+- Après `Ctrl+F5`, `unwrapManifestKey` échoue car `SJ_UNLOCK_V1` inclut des champs volatils (issuedAt/expiresAt/nonce/origin) et la signature change entre sessions, donc la KEK dérivée change.
+- OFF-04 (changement d’origin/host/port : `localhost` vs `127.0.0.1`) confirme que si `origin` est inclus dans VaultRoot, on crée des coffres différents pour un même wallet selon l’URL.
+- Conclusion : `SJ_UNLOCK_V1` ne peut pas être la racine de dérivation KEK si on veut relire un manifest après refresh, et VaultRoot ne doit pas dépendre de l’URL.
+
+2️⃣ **Décision**
+- On introduit un message stable dédié : **`SJ_VAULT_ROOT_V1`**.
+- **Vault Root (SJ_VAULT_ROOT_V1)**
+  - Message stable **sans champs volatils** (pas de issuedAt/expiresAt/nonce).
+  - **Exclut `origin`** pour éviter des coffres multiples selon l’environnement (host/port).
+  - Dépend uniquement de :
+    - `walletPubKey` (wallet)
+    - `vaultId` (stable)
+    - `version` (implicit via le template + canonical object)
+  - Signature refaisable après refresh.
+  - Matériel conservé uniquement en mémoire : `lastVaultRoot` + `lastVaultRootSignatureBytes` (non persisté).
+  - Cette signature est la **seule** source valide pour dériver la KEK stable utilisée par le manifest.
+- **Unlock Vault (SJ_UNLOCK_V1)**
+  - Reste **inchangé** : volatile + TTL, sert au gating session (VaultUnlocked) et applique OQ-06.
+  - Ne sert pas à la dérivation KEK du manifest.
+- **Manifest**
+  - `envelope.kekDerivation.messageTemplateId` doit refléter la réalité : `"SJ_VAULT_ROOT_V1"`.
+  - Ne reconstruit jamais un challenge arbitraire.
+  - Reçoit explicitement la signature Vault Root pour dériver la KEK stable.
+
+3️⃣ **Migration / compat**
+- Si un ancien manifest contient `envelope.kekDerivation.messageTemplateId = "SJ_UNLOCK_V1"` :
+  - **erreur explicite**, pas de reset silencieux, pas de modification du pointeur local.
+
+4️⃣ **Debug / traçage (sans fuite)**
+- Sous `NEXT_PUBLIC_SJ_DEBUG=true`, on log **uniquement** `sha256B64(messageToSign)` :
+  - pour `SJ_UNLOCK_V1`
+  - pour `SJ_VAULT_ROOT_V1`
+- Jamais de log du `messageToSign` brut ni des signatures.
+
+5️⃣ **Raison**
+- Cohérence cryptographique + persistance inter-refresh sans persistance de secrets.
+- Éviter des coffres multiples dépendant de l’URL (origin/host/port).
+- Maintien de la séparation Verify / Unlock / VaultRoot.
+- Prépare la migration future vers pointeur on-chain/IPNS.
+
+6️⃣ **Impact**
+- UX : une signature additionnelle au moment de l’Unlock (Vault Root).
+- Sécurité : pas de secrets persistés ; meilleure robustesse “wallet can open” après refresh.
+- **Statut** : Accepted

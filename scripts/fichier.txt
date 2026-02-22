@@ -1,0 +1,156 @@
+.
+├── apps
+│   └── web
+│       ├── next.config.js
+│       ├── next-env.d.ts
+│       ├── node_modules
+│       │   ├── bs58 -> ../../../node_modules/.pnpm/bs58@6.0.0/node_modules/bs58
+│       │   ├── eslint -> ../../../node_modules/.pnpm/eslint@8.57.1/node_modules/eslint
+│       │   ├── eslint-config-next -> ../../../node_modules/.pnpm/eslint-config-next@13.4.10_eslint@8.57.1_typescript@5.9.3/node_modules/eslint-config-next
+│       │   ├── husky -> ../../../node_modules/.pnpm/husky@8.0.3/node_modules/husky
+│       │   ├── next -> ../../../node_modules/.pnpm/next@13.5.11_@babel+core@7.28.5_react-dom@18.3.1_react@18.3.1/node_modules/next
+│       │   ├── react -> ../../../node_modules/.pnpm/react@18.3.1/node_modules/react
+│       │   ├── react-dom -> ../../../node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom
+│       │   ├── @solana
+│       │   │   ├── wallet-adapter-base -> ../../../../node_modules/.pnpm/@solana+wallet-adapter-base@0.9.27_@solana+web3.js@1.98.4/node_modules/@solana/wallet-adapter-base
+│       │   │   ├── wallet-adapter-react -> ../../../../node_modules/.pnpm/@solana+wallet-adapter-react@0.15.39_@solana+web3.js@1.98.4_bs58@6.0.0_fastestsmallesttextenc_itlrhxirgcub6pjlhxdzu5ilxe/node_modules/@solana/wallet-adapter-react
+│       │   │   ├── wallet-adapter-react-ui -> ../../../../node_modules/.pnpm/@solana+wallet-adapter-react-ui@0.9.39_@solana+web3.js@1.98.4_bs58@6.0.0_fastestsmallesttexte_ybgoes4o57hohak6l4kq76wnca/node_modules/@solana/wallet-adapter-react-ui
+│       │   │   ├── wallet-adapter-wallets -> ../../../../node_modules/.pnpm/@solana+wallet-adapter-wallets@0.19.37_@babel+runtime@7.28.4_@solana+sysvars@2.3.0_@solana+we_mjd6p5eblzozyntjqqrobbvovi/node_modules/@solana/wallet-adapter-wallets
+│       │   │   └── web3.js -> ../../../../node_modules/.pnpm/@solana+web3.js@1.98.4_typescript@5.9.3/node_modules/@solana/web3.js
+│       │   ├── tweetnacl -> ../../../node_modules/.pnpm/tweetnacl@1.0.3/node_modules/tweetnacl
+│       │   ├── @types
+│       │   │   ├── node -> ../../../../node_modules/.pnpm/@types+node@18.19.130/node_modules/@types/node
+│       │   │   └── react -> ../../../../node_modules/.pnpm/@types+react@18.3.27/node_modules/@types/react
+│       │   ├── typescript -> ../../../node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+│       │   └── vitest -> ../../../node_modules/.pnpm/vitest@1.6.1_@types+node@18.19.130_jsdom@21.1.2/node_modules/vitest
+│       ├── package.json
+│       ├── pages
+│       │   ├── api
+│       │   │   └── ipfs
+│       │   │       └── add.ts
+│       │   └── index.tsx
+│       ├── src
+│       │   └── components
+│       │       └── wallet
+│       │           ├── ConnectWallet.tsx
+│       │           ├── IdentityStatus.tsx
+│       │           ├── README.md
+│       │           ├── types.ts
+│       │           ├── utils.ts
+│       │           └── VerifyWallet.tsx
+│       ├── tests
+│       │   ├── dummy.test.ts
+│       │   └── wallet.test.ts
+│       ├── tsconfig.json
+│       └── tsconfig.tsbuildinfo
+├── dev.sh
+├── dev-sh-out.log
+├── dev-web-debug.log
+├── dev-web.log
+├── docs
+│   └── tasks
+│       ├── task-02.md
+│       └── task-03-wallet-connection.md
+├── ENVIRONMENT.md
+├── fichier.txt
+├── infra
+│   └── ipfs
+│       └── docker-compose.yml
+├── node_modules
+│   ├── bs58 -> .pnpm/bs58@6.0.0/node_modules/bs58
+│   ├── @eslint
+│   │   ├── eslintrc -> ../.pnpm/@eslint+eslintrc@2.1.4/node_modules/@eslint/eslintrc
+│   │   └── js -> ../.pnpm/@eslint+js@8.57.1/node_modules/@eslint/js
+│   ├── eslint -> .pnpm/eslint@8.57.1/node_modules/eslint
+│   ├── @eslint-community
+│   │   ├── eslint-utils -> ../.pnpm/@eslint-community+eslint-utils@4.9.1_eslint@8.57.1/node_modules/@eslint-community/eslint-utils
+│   │   └── regexpp -> ../.pnpm/@eslint-community+regexpp@4.12.2/node_modules/@eslint-community/regexpp
+│   ├── eslint-config-next -> .pnpm/eslint-config-next@13.4.10_eslint@8.57.1_typescript@5.9.3/node_modules/eslint-config-next
+│   ├── eslint-import-resolver-node -> .pnpm/eslint-import-resolver-node@0.3.9/node_modules/eslint-import-resolver-node
+│   ├── eslint-import-resolver-typescript -> .pnpm/eslint-import-resolver-typescript@3.10.1_eslint-plugin-import@2.32.0_eslint@8.57.1/node_modules/eslint-import-resolver-typescript
+│   ├── eslint-module-utils -> .pnpm/eslint-module-utils@2.12.1_@typescript-eslint+parser@5.62.0_eslint-import-resolver-node@0.3.9_o3jwofsspvnqwvu4hf5gznqgtu/node_modules/eslint-module-utils
+│   ├── eslint-plugin-import -> .pnpm/eslint-plugin-import@2.32.0_@typescript-eslint+parser@5.62.0_eslint-import-resolver-typescript@3.10.1_eslint@8.57.1/node_modules/eslint-plugin-import
+│   ├── eslint-plugin-jsx-a11y -> .pnpm/eslint-plugin-jsx-a11y@6.10.2_eslint@8.57.1/node_modules/eslint-plugin-jsx-a11y
+│   ├── eslint-plugin-react -> .pnpm/eslint-plugin-react@7.37.5_eslint@8.57.1/node_modules/eslint-plugin-react
+│   ├── eslint-plugin-react-hooks -> .pnpm/eslint-plugin-react-hooks@5.0.0-canary-7118f5dd7-20230705_eslint@8.57.1/node_modules/eslint-plugin-react-hooks
+│   ├── eslint-scope -> .pnpm/eslint-scope@7.2.2/node_modules/eslint-scope
+│   ├── eslint-visitor-keys -> .pnpm/eslint-visitor-keys@3.4.3/node_modules/eslint-visitor-keys
+│   ├── fake-indexeddb -> .pnpm/fake-indexeddb@6.2.5/node_modules/fake-indexeddb
+│   ├── @next
+│   │   └── eslint-plugin-next -> ../.pnpm/@next+eslint-plugin-next@13.4.10/node_modules/@next/eslint-plugin-next
+│   ├── pnpm -> .pnpm/pnpm@8.15.9/node_modules/pnpm
+│   ├── rimraf -> .pnpm/rimraf@4.4.1/node_modules/rimraf
+│   ├── @rushstack
+│   │   └── eslint-patch -> ../.pnpm/@rushstack+eslint-patch@1.15.0/node_modules/@rushstack/eslint-patch
+│   ├── @solana
+│   │   ├── wallet-adapter-base -> ../.pnpm/@solana+wallet-adapter-base@0.9.27_@solana+web3.js@1.98.4/node_modules/@solana/wallet-adapter-base
+│   │   ├── wallet-adapter-react -> ../.pnpm/@solana+wallet-adapter-react@0.15.39_@solana+web3.js@1.98.4_bs58@6.0.0_fastestsmallesttextenc_itlrhxirgcub6pjlhxdzu5ilxe/node_modules/@solana/wallet-adapter-react
+│   │   ├── wallet-adapter-react-ui -> ../.pnpm/@solana+wallet-adapter-react-ui@0.9.39_@solana+web3.js@1.98.4_bs58@6.0.0_fastestsmallesttexte_ybgoes4o57hohak6l4kq76wnca/node_modules/@solana/wallet-adapter-react-ui
+│   │   ├── wallet-adapter-wallets -> ../.pnpm/@solana+wallet-adapter-wallets@0.19.37_@babel+runtime@7.28.4_@solana+sysvars@2.3.0_@solana+we_mjd6p5eblzozyntjqqrobbvovi/node_modules/@solana/wallet-adapter-wallets
+│   │   └── web3.js -> ../.pnpm/@solana+web3.js@1.98.4_typescript@5.9.3/node_modules/@solana/web3.js
+│   ├── tweetnacl -> .pnpm/tweetnacl@1.0.3/node_modules/tweetnacl
+│   ├── @types
+│   │   └── node -> ../.pnpm/@types+node@18.19.130/node_modules/@types/node
+│   ├── typescript -> .pnpm/typescript@5.9.3/node_modules/typescript
+│   ├── @typescript-eslint
+│   │   ├── eslint-plugin -> ../.pnpm/@typescript-eslint+eslint-plugin@5.62.0_@typescript-eslint+parser@5.62.0_eslint@8.57.1_typescript@5.9.3/node_modules/@typescript-eslint/eslint-plugin
+│   │   ├── parser -> ../.pnpm/@typescript-eslint+parser@5.62.0_eslint@8.57.1_typescript@5.9.3/node_modules/@typescript-eslint/parser
+│   │   ├── scope-manager -> ../.pnpm/@typescript-eslint+scope-manager@5.62.0/node_modules/@typescript-eslint/scope-manager
+│   │   ├── types -> ../.pnpm/@typescript-eslint+types@5.62.0/node_modules/@typescript-eslint/types
+│   │   ├── typescript-estree -> ../.pnpm/@typescript-eslint+typescript-estree@5.62.0_typescript@5.9.3/node_modules/@typescript-eslint/typescript-estree
+│   │   ├── type-utils -> ../.pnpm/@typescript-eslint+type-utils@5.62.0_eslint@8.57.1_typescript@5.9.3/node_modules/@typescript-eslint/type-utils
+│   │   ├── utils -> ../.pnpm/@typescript-eslint+utils@5.62.0_eslint@8.57.1_typescript@5.9.3/node_modules/@typescript-eslint/utils
+│   │   └── visitor-keys -> ../.pnpm/@typescript-eslint+visitor-keys@5.62.0/node_modules/@typescript-eslint/visitor-keys
+│   └── vitest -> .pnpm/vitest@1.6.1_@types+node@18.19.130_jsdom@21.1.2/node_modules/vitest
+├── package.json
+├── packages
+│   ├── crypto
+│   │   ├── dist
+│   │   │   ├── index.d.ts
+│   │   │   └── index.js
+│   │   ├── node_modules
+│   │   │   ├── eslint -> ../../../node_modules/.pnpm/eslint@8.57.1/node_modules/eslint
+│   │   │   ├── rimraf -> ../../../node_modules/.pnpm/rimraf@4.4.1/node_modules/rimraf
+│   │   │   ├── @types
+│   │   │   │   └── node -> ../../../../node_modules/.pnpm/@types+node@18.19.130/node_modules/@types/node
+│   │   │   ├── typescript -> ../../../node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+│   │   │   └── vitest -> ../../../node_modules/.pnpm/vitest@1.6.1_@types+node@18.19.130_jsdom@21.1.2/node_modules/vitest
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   └── index.ts
+│   │   ├── tests
+│   │   │   ├── crypto.test.d.ts
+│   │   │   ├── crypto.test.js
+│   │   │   └── crypto.test.ts
+│   │   ├── tsconfig.json
+│   │   └── vitest.config.ts
+│   └── storage
+│       ├── dist
+│       │   ├── index.d.ts
+│       │   └── index.js
+│       ├── node_modules
+│       │   ├── dexie -> ../../../node_modules/.pnpm/dexie@3.2.7/node_modules/dexie
+│       │   ├── eslint -> ../../../node_modules/.pnpm/eslint@8.57.1/node_modules/eslint
+│       │   ├── fake-indexeddb -> ../../../node_modules/.pnpm/fake-indexeddb@6.2.5/node_modules/fake-indexeddb
+│       │   ├── jsdom -> ../../../node_modules/.pnpm/jsdom@21.1.2/node_modules/jsdom
+│       │   ├── rimraf -> ../../../node_modules/.pnpm/rimraf@4.4.1/node_modules/rimraf
+│       │   ├── @types
+│       │   │   └── node -> ../../../../node_modules/.pnpm/@types+node@18.19.130/node_modules/@types/node
+│       │   ├── typescript -> ../../../node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
+│       │   └── vitest -> ../../../node_modules/.pnpm/vitest@1.6.1_@types+node@18.19.130_jsdom@21.1.2/node_modules/vitest
+│       ├── package.json
+│       ├── src
+│       │   └── index.ts
+│       ├── tests
+│       │   ├── setupIndexedDB.ts
+│       │   ├── storage.test.d.ts
+│       │   ├── storage.test.js
+│       │   └── storage.test.ts
+│       ├── tsconfig.json
+│       └── vitest.config.ts
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── README.md
+└── tsconfig.json
+
+106 directories, 48 files

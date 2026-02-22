@@ -1,6 +1,12 @@
-import canonicalize from 'canonicalize'
+import * as canonicalizeMod from 'canonicalize'
 import { deriveKeyHKDF, sha256, utf8Encode } from '@sj/crypto'
-import type { EncryptedManifestObjectV1, EncryptedManifestObjectV1HashBasis, ManifestV1 } from './types'
+import type { EncryptedManifestObjectV1, EncryptedManifestObjectV1HashBasis, ManifestV1 } from './types.js'
+
+// Canonicalize import compatibility:
+// - Depending on TS/ESM interop, `canonicalize` may be exposed as default export or module namespace.
+// - We normalize to a callable function here, matching the robustness used elsewhere in the repo.
+const canonicalize: (obj: unknown) => string | undefined =
+  (canonicalizeMod as any)?.default ?? (canonicalizeMod as any)
 
 export type ManifestCryptoDeps = {
   /**

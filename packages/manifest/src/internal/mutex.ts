@@ -5,6 +5,11 @@
  * - Concurrency handling is MVP-only: in-memory mutex + read → merge → write.
  * - No multi-tab locking is attempted here.
  *
+ * Node ESM compatibility:
+ * - This module is imported from emitted ESM using an explicit `.js` extension
+ *   (e.g. `./internal/mutex.js`). No runtime changes are required here; the
+ *   compatibility is ensured by the caller import specifier + TS emit config.
+ *
  * This mutex is intentionally tiny and dependency-free.
  */
 
