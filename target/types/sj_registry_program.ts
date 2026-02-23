@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/sj_registry_program.json`.
  */
 export type SjRegistryProgram = {
-  "address": "D6qM1htB82ZSNYh2BUDeVPK44ECGqbstxY9jTLSfLQnz",
+  "address": "89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd",
   "metadata": {
     "name": "sjRegistryProgram",
     "version": "0.1.0",

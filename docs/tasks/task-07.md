@@ -16,6 +16,12 @@ The Solana program enforces strict format validation to prevent registry polluti
 - **Length**: Maximum 64 characters.
 - **Error**: Throws `InvalidCidFormat` or `CidTooLong`.
 
+### 3. Vault ID and Hash Integrity
+The link between `vaultId` and its on-chain storage is protected by PDA seeds:
+- **Seeds**: `[b"SJ_REGISTRY_V1", wallet_pubkey, sha256(vault_id)]`.
+- **Mismatch manifestation**: Any attempt to initialize a registry with a `vaultId` hash that does not match the provided `vault_id` string will result in a `ConstraintSeeds` error.
+- **Justification**: The Solana runtime validates account seeds before instruction execution; the seed barrier is the primary security gate.
+
 ### 3. Vault ID Canonicalization
 - **Regex**: `[a-z0-9-_]{1,32}`.
 - **Rules**: Lowercase only, no spaces, no special characters other than `-` and `_`.

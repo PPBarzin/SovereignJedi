@@ -104,7 +104,7 @@ describe('Solana Registry Hostile E2E (STEEL)', () => {
         await sendTx(await createAppendManifestInstruction(program, payer.publicKey, vId, badCid));
         expect.fail(`Should have failed for ${badCid}`);
       } catch (e: any) {
-        expect(e.message).toMatch(/InvalidCidFormat|InvalidCid/);
+        expect(e.message).toContain("InvalidCidFormat");
       }
     }
   });

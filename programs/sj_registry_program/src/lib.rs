@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use solana_program::hash::hash;
 
-declare_id!("D6qM1htB82ZSNYh2BUDeVPK44ECGqbstxY9jTLSfLQnz");
+declare_id!("89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd");
 
 pub const MAX_ENTRIES: usize = 32;
 pub const MAX_CID_LEN: usize = 64;

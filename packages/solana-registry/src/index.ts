@@ -4,7 +4,7 @@ import { createHash } from 'crypto';
 import sjRegistryIdl from './idl/sj_registry_program.json';
 
 // Program ID from declare_id! in lib.rs
-export const PROGRAM_ID = new PublicKey("D6qM1htB82ZSNYh2BUDeVPK44ECGqbstxY9jTLSfLQnz");
+export const PROGRAM_ID = new PublicKey("89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd");
 
 export interface RegistryEntry {
   manifestCid: string;
