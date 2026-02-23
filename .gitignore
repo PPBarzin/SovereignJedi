@@ -140,3 +140,4 @@ yarn.lock
 
 # If you create local overrides for CI or secrets use a specific pattern, add them above.
 # End of file
+sj_registry_program-keypair.json

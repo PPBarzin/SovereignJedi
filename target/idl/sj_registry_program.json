@@ -1,0 +1,294 @@
+{
+  "address": "D6qM1htB82ZSNYh2BUDeVPK44ECGqbstxY9jTLSfLQnz",
+  "metadata": {
+    "name": "sj_registry_program",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Sovereign Jedi Registry Program"
+  },
+  "instructions": [
+    {
+      "name": "append_manifest",
+      "discriminator": [
+        212,
+        148,
+        34,
+        70,
+        1,
+        252,
+        58,
+        30
+      ],
+      "accounts": [
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  83,
+                  74,
+                  95,
+                  82,
+                  69,
+                  71,
+                  73,
+                  83,
+                  84,
+                  82,
+                  89,
+                  95,
+                  86,
+                  49
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "arg",
+                "path": "vault_id_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "wallet",
+          "signer": true,
+          "relations": [
+            "registry"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "_vault_id_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "manifest_cid",
+          "type": "string"
+        },
+        {
+          "name": "manifest_schema_version",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "init_registry",
+      "discriminator": [
+        131,
+        22,
+        4,
+        103,
+        24,
+        94,
+        163,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  83,
+                  74,
+                  95,
+                  82,
+                  69,
+                  71,
+                  73,
+                  83,
+                  84,
+                  82,
+                  89,
+                  95,
+                  86,
+                  49
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "arg",
+                "path": "vault_id_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "wallet",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_id",
+          "type": "string"
+        },
+        {
+          "name": "vault_id_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "manifest_schema_version",
+          "type": "u8"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "RegistryAccount",
+      "discriminator": [
+        113,
+        93,
+        106,
+        201,
+        100,
+        166,
+        146,
+        98
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "RegistryFull",
+      "msg": "Registry is full (max 32 entries)."
+    },
+    {
+      "code": 6001,
+      "name": "InvalidSchemaVersion",
+      "msg": "Invalid manifest schema version."
+    },
+    {
+      "code": 6002,
+      "name": "DuplicateEntry",
+      "msg": "Manifest CID already published."
+    },
+    {
+      "code": 6003,
+      "name": "InvalidVaultIdHash",
+      "msg": "Vault ID hash mismatch."
+    },
+    {
+      "code": 6004,
+      "name": "InvalidVaultIdFormat",
+      "msg": "Invalid Vault ID format (must be alpha-numeric)."
+    },
+    {
+      "code": 6005,
+      "name": "InvalidCidFormat",
+      "msg": "Invalid CID format."
+    },
+    {
+      "code": 6006,
+      "name": "CidTooLong",
+      "msg": "CID is too long."
+    }
+  ],
+  "types": [
+    {
+      "name": "RegistryAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "registry_version",
+            "type": "u8"
+          },
+          {
+            "name": "manifest_schema_version",
+            "type": "u8"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_id",
+            "type": "string"
+          },
+          {
+            "name": "entries",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "RegistryEntry"
+                }
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RegistryEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "manifest_cid",
+            "type": "string"
+          },
+          {
+            "name": "manifest_cid_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "published_at",
+            "type": "i64"
+          },
+          {
+            "name": "publisher",
+            "type": "pubkey"
+          },
+          {
+            "name": "manifest_schema_version",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

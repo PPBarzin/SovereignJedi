@@ -7,6 +7,7 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import useSession from '../../lib/session/useSession'
 import { session as sessionSingleton } from '../../lib/session/SessionManager'
+import { getManifestCid } from '@sj/manifest'
 
  // ProgDec moved to docs/progdec/T03-D001-wallet-ui.md — remove inline decision notes.
  // See docs/progdec/T03-D001-wallet-ui.md for rationale and traceability.
@@ -57,11 +58,31 @@ type Props = {
  */
 export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
   const wallet = useWallet()
-  const { connectWallet, walletPubKey, isVaultUnlocked, isWalletConnected } = useSession()
+  const { connectWallet, walletPubKey, isVaultUnlocked, isWalletConnected, onChainRegistry, publishManifest } = useSession()
   const [publicKeyStr, setPublicKeyStr] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [publishing, setPublishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const localManifestCid = useMemo(() => {
+    if (!walletPubKey) return null
+    try {
+      return getManifestCid(walletPubKey)
+    } catch {
+      return null
+    }
+  }, [walletPubKey])
+
+  const onChainLatestManifestCid = useMemo(() => {
+    if (!onChainRegistry?.entries || onChainRegistry.entries.length === 0) return null
+    // Delegate to canonical selectHead (publishedAt DESC, then manifestCid DESC)
+    const { registryService } = require('../../lib/solana/RegistryService')
+    const head = registryService.selectHead(onChainRegistry.entries)
+    return head?.manifestCid ?? null
+  }, [onChainRegistry])
+
+  const isUpToDate = localManifestCid === onChainLatestManifestCid
 
   const SJ_DEBUG = String(process.env.NEXT_PUBLIC_SJ_DEBUG).toLowerCase() === 'true'
 
@@ -257,7 +278,57 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
                   Verify (Sign)
                 </button>
               ) : (
-                <span style={styles.verifiedBadge}>Verified</span>
+                <>
+                  <span style={styles.verifiedBadge}>Verified</span>
+                  {localManifestCid && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                      {isUpToDate ? (
+                        <span style={{ ...styles.verifiedBadge, background: tokens.ok + '22', color: tokens.ok }}>Up to date</span>
+                      ) : (
+                        <button 
+                          onClick={async () => {
+                            setPublishing(true)
+                            setError(null)
+                            try {
+                              await publishManifest(localManifestCid)
+                            } catch (err: any) {
+                              setError(err?.message ?? String(err))
+                            } finally {
+                              setPublishing(false)
+                            }
+                          }} 
+                          disabled={publishing}
+                          style={{ ...styles.verifyBtn, background: tokens.btnPrimaryBg, border: tokens.btnPrimaryBorder, color: tokens.btnPrimaryText }}
+                        >
+                          {publishing ? 'Publishing...' : 'Publish to Solana'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {!localManifestCid && onChainLatestManifestCid && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                      <span style={{ ...styles.verifiedBadge, color: tokens.warning }}>Not synced</span>
+                      <button 
+                        onClick={async () => {
+                          if (!onChainLatestManifestCid || !walletPubKey) return
+                          try {
+                            // Import setManifestCid dynamically to avoid circular dep if any
+                            const { setManifestCid } = await import('@sj/manifest')
+                            setManifestCid(walletPubKey, onChainLatestManifestCid)
+                            // Trigger refresh to reload manifest
+                            const { refresh } = await import('../../lib/session/useSession')
+                            window.dispatchEvent(new CustomEvent('sj-session-changed'))
+                          } catch (err: any) {
+                            setError(err?.message ?? String(err))
+                          }
+                        }} 
+                        style={{ ...styles.verifyBtn, background: tokens.btnPrimaryBg, border: tokens.btnPrimaryBorder, color: tokens.btnPrimaryText }}
+                      >
+                        Restore from Solana
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

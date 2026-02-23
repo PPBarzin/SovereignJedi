@@ -39,6 +39,8 @@ import type { BuildUnlockResult, BuildVaultRootResult } from '@sj/crypto'
 import type { VerifiedState } from './SessionManager'
 import SessionManagerDefault, { session as sessionSingleton } from './SessionManager'
 import { useWallet } from '@solana/wallet-adapter-react'
+import { registryService } from '../solana/RegistryService'
+import type { RegistryAccount } from '@sj/solana-registry'
 
 type UseSessionReturn = {
   // actions
@@ -46,11 +48,13 @@ type UseSessionReturn = {
   disconnectWallet: () => void
   unlockVault: () => Promise<void>
   lockVault: () => void
+  publishManifest: (manifestCid: string) => Promise<string>
   // selectors / state
   isWalletConnected: boolean
   isVaultUnlocked: boolean
   verified: VerifiedState | null
   walletPubKey: string | null
+  onChainRegistry: RegistryAccount | null
 
   /**
    * Task 6:
@@ -88,6 +92,7 @@ export function useSession(): UseSessionReturn {
   const [isVaultUnlocked, setIsVaultUnlocked] = useState<boolean>(() => session.isVaultUnlocked())
   const [verified, setVerified] = useState<VerifiedState | null>(() => session.getVerified())
   const [isWalletConnected, setIsWalletConnected] = useState<boolean>(() => session.isWalletConnected())
+  const [onChainRegistry, setOnChainRegistry] = useState<RegistryAccount | null>(null)
 
   // Task 6: in-memory Unlock Vault material (SJ_UNLOCK_V1)
   const [lastUnlock, setLastUnlock] = useState<BuildUnlockResult | null>(
@@ -135,6 +140,7 @@ export function useSession(): UseSessionReturn {
 
   const disconnectWallet = useCallback(() => {
     session.disconnectWallet()
+    setOnChainRegistry(null)
     // sync state
     refresh()
   }, [refresh, session])
@@ -150,175 +156,36 @@ export function useSession(): UseSessionReturn {
     refresh()
   }, [refresh, session])
 
-  // Inject wallet-adapter signMessage into SessionManager when available.
-  // This keeps Unlock/VaultRoot signing consistent with the adapter connection state and can reduce popup flicker.
-  //
-  // IMPORTANT:
-  // - We must bind the method to preserve `this` context.
-  //   Otherwise calling the extracted function can throw:
-  //     "Cannot set properties of undefined (setting 'walletAdapterSigner')"
+  const publishManifest = useCallback(async (manifestCid: string) => {
+    if (!wallet.publicKey || !wallet.connected) throw new Error('Wallet not connected')
+    const signature = await registryService.publishManifest(wallet, 'local-default', manifestCid)
+    // Refresh registry state
+    const reg = await registryService.getRegistry(wallet.publicKey.toBase58(), 'local-default')
+    setOnChainRegistry(reg)
+    return signature
+  }, [wallet])
+
+  // Fetch registry on-chain when wallet is connected
   useEffect(() => {
-    const rawSetter = (session as any)?.setWalletAdapterSigner
-    if (typeof rawSetter !== 'function') return
-    const setWalletAdapterSigner = rawSetter.bind(session)
-
-    // Only inject when wallet-adapter provides a signMessage function.
-    if (wallet && typeof (wallet as any).signMessage === 'function') {
-      setWalletAdapterSigner(async (message: Uint8Array) => {
-        const sig = await (wallet as any).signMessage(message)
-        // wallet-adapter returns Uint8Array
-        return sig as Uint8Array
-      })
-    } else {
-      // Clear injected signer when adapter is unavailable/disconnected
-      setWalletAdapterSigner(undefined)
+    if (walletPubKey) {
+      void (async () => {
+        const reg = await registryService.getRegistry(walletPubKey, 'local-default')
+        setOnChainRegistry(reg)
+      })()
     }
-  }, [wallet, session])
-
-  // Install listeners for window.solana to enforce Task 3.5 invariants.
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-    const anyWin = window as any
-    const sol = anyWin?.solana
-
-    if (!sol || !sol.isPhantom) {
-      // Nothing to subscribe to
-      return undefined
-    }
-
-    const handleAccountChanged = (newPubKey: any) => {
-      // MVP behavior:
-      // - Do NOT disconnect on accountChanged when a new pubkey is provided.
-      //   Disconnecting causes transient `walletPubKey=null` races (e.g. during upload).
-      // - If newPubKey is null => treat as disconnect.
-      // - If a new pubkey is provided => register it in SessionManager.
-      try {
-        if (newPubKey == null) {
-          session.disconnectWallet()
-        } else {
-          // newPubKey may be a PublicKey-like object or string; SessionManager normalizes.
-          session.connectWallet(newPubKey, 'phantom').catch(() => {
-            /* ignore connect errors */
-          })
-        }
-      } catch {
-        // ignore
-      } finally {
-        // Always refresh UI state
-        refresh()
-      }
-    }
-
-    const handleDisconnect = () => {
-      try {
-        session.disconnectWallet()
-      } catch {
-        // ignore
-      } finally {
-        refresh()
-      }
-    }
-
-    const handleConnect = (info: any) => {
-      // Some provider implementations pass a publicKey or an object containing publicKey.
-      try {
-        let pk: string | null = null
-        if (info && typeof info === 'object') {
-          if (info.publicKey) {
-            // info.publicKey may be a object type (PublicKey-like) or string
-            try {
-              // Attempt to string-coerce; SessionManager expects a base58 string.
-              pk = String(info.publicKey)
-            } catch {
-              pk = null
-            }
-          }
-        }
-        // If pk available, call session.connectWallet to register pubkey in SessionManager
-        if (pk) {
-          session.connectWallet(pk, 'phantom').catch(() => {
-            /* ignore connect errors */
-          })
-        }
-      } catch {
-        // ignore
-      } finally {
-        refresh()
-      }
-    }
-
-    // Subscribe (guard calls)
-    try {
-      if (typeof sol.on === 'function') {
-        sol.on('accountChanged', handleAccountChanged)
-        sol.on('disconnect', handleDisconnect)
-        sol.on('connect', handleConnect)
-      }
-    } catch {
-      // ignore subscription failures
-    }
-
-    // Also listen to storage events to pick up changes to the persisted Verified signal
-    const onStorage = (ev: StorageEvent) => {
-      // SessionManager persists verified state under `sj_verified_v1`
-      if (!ev.key || ev.key === 'sj_verified_v1') {
-        refresh()
-      }
-    }
-
-    // Listen to explicit session-change events dispatched by SessionManager
-    // This avoids reliance on polling and provides immediate UI sync.
-    const onSessionChanged = (() => {
-      // event listener wrapper
-      return (ev?: Event) => {
-        try {
-          refresh()
-        } catch {
-          // ignore
-        }
-      }
-    })()
-
-    window.addEventListener('storage', onStorage)
-    window.addEventListener('sj-session-changed', onSessionChanged as EventListener)
-
-    return () => {
-      try {
-        if (typeof sol.removeListener === 'function') {
-          sol.removeListener('accountChanged', handleAccountChanged)
-          sol.removeListener('disconnect', handleDisconnect)
-          sol.removeListener('connect', handleConnect)
-        }
-      } catch {
-        // ignore subscription failures
-      }
-      window.removeEventListener('storage', onStorage)
-      window.removeEventListener('sj-session-changed', onSessionChanged as EventListener)
-    }
-    // We purposely do not include `session` in deps to avoid re-subscribing to events.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh])
-
-  // Initial sync; further updates are driven by the 'sj-session-changed' event
-  // and storage events handled above. Polling is removed to avoid transient races.
-  useEffect(() => {
-    try {
-      refresh()
-    } catch {
-      // ignore
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [walletPubKey])
 
   return {
     connectWallet,
     disconnectWallet,
     unlockVault,
     lockVault,
+    publishManifest,
     isWalletConnected,
     isVaultUnlocked,
     verified,
     walletPubKey,
+    onChainRegistry,
     lastUnlock,
     lastUnlockSignatureBytes,
     lastVaultRoot,

@@ -14,6 +14,8 @@
   ],
   "scripts": {
     "bootstrap": "pnpm install",
+    "gen:idl": "anchor build && cp target/idl/sj_registry_program.json packages/solana-registry/src/idl/",
+    "check:idl": "anchor build && diff target/idl/sj_registry_program.json packages/solana-registry/src/idl/sj_registry_program.json",
     "libsodium:sync": "node ./scripts/sync-libsodium.js",
     "test": "pnpm -r --reporter=default test",
     "build": "pnpm --filter \"packages/*\" -r build && pnpm --filter \"apps/*\" -r build",
@@ -24,6 +26,7 @@
     "clean": "rimraf node_modules pnpm-lock.yaml .pnpm-store"
   },
   "devDependencies": {
+    "@coral-xyz/anchor-cli": "0.31.0",
     "@types/node": "^18.0.0",
     "@typescript-eslint/eslint-plugin": "^5.61.0",
     "@typescript-eslint/parser": "^5.61.0",
