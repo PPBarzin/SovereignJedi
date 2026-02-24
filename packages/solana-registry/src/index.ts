@@ -59,6 +59,7 @@ export async function fetchRegistry(
   const program = new Program(sjRegistryIdl as any as Idl, { connection } as any);
   
   try {
+    // @ts-ignore - dynamic property access on Idl program
     const account = await program.account.registryAccount.fetch(address);
     return account as any as RegistryAccount;
   } catch (e) {

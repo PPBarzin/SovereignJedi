@@ -111,6 +111,10 @@ fi
 info "Running pnpm install (repo root)..."
 pnpm install --ignore-scripts || die "pnpm install failed"
 
+# Build local packages (required for workspace imports like @sj/solana-registry)
+info "Building workspace packages..."
+pnpm --filter "./packages/**" run build || die "workspace build failed"
+
 # If --with-ipfs: ensure docker, start compose, wait for IPFS
 if [ "$MODE_WITH_IPFS" -eq 1 ]; then
   info "Mode: --with-ipfs -> will start IPFS infra and wait for API"
