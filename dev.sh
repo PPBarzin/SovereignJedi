@@ -201,6 +201,13 @@ fi
 
 # Start web dev server
 info "Starting web dev server (apps/web). Logs -> ${DEV_LOG}"
+
+# Provide default localnet Program ID if missing (required for Task 07 strict READY state)
+if [ -z "${NEXT_PUBLIC_SJ_REGISTRY_PROGRAM_ID:-}" ]; then
+  warn "NEXT_PUBLIC_SJ_REGISTRY_PROGRAM_ID not set. Using stable localnet default."
+  export NEXT_PUBLIC_SJ_REGISTRY_PROGRAM_ID="89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd"
+fi
+
 # remove old log if exists
 if [ -f "$DEV_LOG" ]; then
   rm -f "$DEV_LOG" || true
