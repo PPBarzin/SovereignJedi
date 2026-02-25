@@ -8,11 +8,11 @@ export type SolanaCluster = 'localnet' | 'devnet' | 'mainnet-beta';
  */
 
 export function getSolanaCluster(): SolanaCluster {
-  const cluster = process.env.NEXT_PUBLIC_SOLANA_CLUSTER || 'devnet';
+  const cluster = process.env.NEXT_PUBLIC_SOLANA_CLUSTER || 'localnet';
   if (cluster === 'localnet' || cluster === 'devnet' || cluster === 'mainnet-beta') {
     return cluster as SolanaCluster;
   }
-  return 'devnet';
+  return 'localnet';
 }
 
 export function getSolanaRpcUrl(): string {
