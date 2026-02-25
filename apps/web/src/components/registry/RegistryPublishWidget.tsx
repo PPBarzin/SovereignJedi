@@ -61,7 +61,7 @@ const styles: Record<string, React.CSSProperties> = {
 }
 
 export const RegistryPublishWidget: React.FC = () => {
-  const { walletPubKey, onChainRegistry, publishManifest } = useSession()
+  const { walletPubKey, onChainRegistry, registryError, publishManifest } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -84,6 +84,7 @@ export const RegistryPublishWidget: React.FC = () => {
 
   const status = useMemo(() => {
     if (!walletPubKey) return { label: 'Disconnected', color: '#6b7280', bg: '#37415122' }
+    if (registryError) return { label: 'Network error', color: '#ef4444', bg: '#ef444422' }
     if (!onChainRegistry || onChainRegistry.entries.length === 0) {
       return { label: 'Not published', color: '#f59e0b', bg: '#f59e0b22' }
     }
@@ -104,11 +105,11 @@ export const RegistryPublishWidget: React.FC = () => {
     // Simple heuristic: if local is in entries but not the latest (head), it's behind.
     // In our registry, entries are appended. So latest is usually last in array (or sorted by selectHead).
     return { label: 'Published (behind)', color: '#3b82f6', bg: '#3b82f622' }
-  }, [walletPubKey, onChainRegistry, localManifestCid, onChainLatestManifestCid])
+  }, [walletPubKey, onChainRegistry, registryError, localManifestCid, onChainLatestManifestCid])
 
   const canPublish = useMemo(() => {
-    return !!walletPubKey && !!localManifestCid && localManifestCid !== onChainLatestManifestCid && !loading
-  }, [walletPubKey, localManifestCid, onChainLatestManifestCid, loading])
+    return !!walletPubKey && !!localManifestCid && localManifestCid !== onChainLatestManifestCid && !loading && !registryError
+  }, [walletPubKey, localManifestCid, onChainLatestManifestCid, loading, registryError])
 
   const handlePublish = async () => {
     if (!localManifestCid) return

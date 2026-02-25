@@ -37,10 +37,12 @@ export class RegistryService {
 
   /**
    * Fetches the registry with retry policy.
+   * Returns null if registry doesn't exist.
+   * Throws if RPC/Network error occurs.
    */
   async getRegistry(walletPubKey: string, vaultId: string = 'local-default'): Promise<RegistryAccount | null> {
+    const programId = getRegistryProgramId();
     try {
-      const programId = getRegistryProgramId();
       return await withRetry(
         () => {
           const wallet = new PublicKey(walletPubKey);
@@ -51,16 +53,26 @@ export class RegistryService {
           backoffMs: RETRY_BACKOFF,
           onRetry: (attempt, err) => {
             if (process.env.NEXT_PUBLIC_SJ_DEBUG === 'true') {
-              console.debug(`[RegistryService] RPC Retry ${attempt}/${RPC_RETRIES}`, err);
+              console.debug(`[SJ-DEBUG][RegistryService] RPC Retry ${attempt}/${RPC_RETRIES}`, {
+                error: err?.message ?? String(err),
+                rpcUrl: getSolanaRpcUrl(),
+                cluster: process.env.NEXT_PUBLIC_SOLANA_CLUSTER
+              });
             }
           }
         }
       );
     } catch (err: any) {
       if (process.env.NEXT_PUBLIC_SJ_DEBUG === 'true') {
-        console.error('[RegistryService] Failed to fetch registry', err);
+        console.error('[SJ-DEBUG][RegistryService] CRITICAL: Failed to fetch registry (RPC Error)', {
+          error: err?.message ?? String(err),
+          cluster: process.env.NEXT_PUBLIC_SOLANA_CLUSTER,
+          rpcUrl: getSolanaRpcUrl(),
+          programId: programId.toBase58(),
+        });
       }
-      return null;
+      // Propagate technical errors to the UI
+      throw err;
     }
   }
 

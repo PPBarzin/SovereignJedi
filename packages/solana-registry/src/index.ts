@@ -28,7 +28,7 @@ export interface RegistryAccount {
  * Derives the PDA for the registry account.
  * Seeds: ["SJ_REGISTRY_V1", walletPubKey, sha256(vaultId.trim().toLowerCase())]
  */
-export function getRegistryAddress(wallet: PublicKey, vaultId: string, programId: PublicKey = PROGRAM_ID): PublicKey {
+export function getRegistryAddress(wallet: PublicKey, vaultId: string, programId: PublicKey): PublicKey {
   const vaultIdCanonical = vaultId.trim().toLowerCase();
   const vaultIdHash = createHash('sha256').update(vaultIdCanonical).digest();
   
@@ -43,7 +43,7 @@ export function getRegistryAddress(wallet: PublicKey, vaultId: string, programId
   return address;
 }
 
-export function getProgram(connection: Connection, wallet: any, programId: PublicKey = PROGRAM_ID): Program {
+export function getProgram(connection: Connection, wallet: any, programId: PublicKey): Program {
   const provider = new AnchorProvider(connection, wallet, {
     preflightCommitment: 'confirmed',
   });
@@ -56,7 +56,7 @@ export async function fetchRegistry(
   connection: Connection,
   wallet: PublicKey,
   vaultId: string,
-  programId: PublicKey = PROGRAM_ID
+  programId: PublicKey
 ): Promise<RegistryAccount | null> {
   const address = getRegistryAddress(wallet, vaultId, programId);
   const program = new Program(sjRegistryIdl as any as Idl, { connection } as any);
@@ -68,8 +68,14 @@ export async function fetchRegistry(
     // @ts-ignore - dynamic property access on Idl program
     const account = await program.account.registryAccount.fetch(address);
     return account as any as RegistryAccount;
-  } catch (e) {
-    return null;
+  } catch (e: any) {
+    // Anchor/Web3 usually includes "Account does not exist" or similar in message for missing accounts
+    const msg = e?.message ?? String(e);
+    if (msg.includes('Account does not exist') || msg.includes('could not find')) {
+      return null;
+    }
+    // Technical error (timeout, network, 429, etc) -> propagate
+    throw e;
   }
 }
 
@@ -78,7 +84,7 @@ export async function createInitRegistryInstruction(
   wallet: PublicKey,
   vaultId: string,
   manifestSchemaVersion: number = 1,
-  programId: PublicKey = PROGRAM_ID
+  programId: PublicKey
 ): Promise<TransactionInstruction> {
   const address = getRegistryAddress(wallet, vaultId, programId);
   const vaultIdCanonical = vaultId.trim().toLowerCase();
@@ -100,7 +106,7 @@ export async function createAppendManifestInstruction(
   vaultId: string,
   manifestCid: string,
   manifestSchemaVersion: number = 1,
-  programId: PublicKey = PROGRAM_ID
+  programId: PublicKey
 ): Promise<TransactionInstruction> {
   const address = getRegistryAddress(wallet, vaultId, programId);
   const vaultIdCanonical = vaultId.trim().toLowerCase();

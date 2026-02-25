@@ -55,6 +55,7 @@ type UseSessionReturn = {
   verified: VerifiedState | null
   walletPubKey: string | null
   onChainRegistry: RegistryAccount | null
+  registryError: string | null
 
   /**
    * Task 6:
@@ -93,6 +94,7 @@ export function useSession(): UseSessionReturn {
   const [verified, setVerified] = useState<VerifiedState | null>(() => session.getVerified())
   const [isWalletConnected, setIsWalletConnected] = useState<boolean>(() => session.isWalletConnected())
   const [onChainRegistry, setOnChainRegistry] = useState<RegistryAccount | null>(null)
+  const [registryError, setRegistryError] = useState<string | null>(null)
 
   // Task 6: in-memory Unlock Vault material (SJ_UNLOCK_V1)
   const [lastUnlock, setLastUnlock] = useState<BuildUnlockResult | null>(
@@ -184,9 +186,18 @@ export function useSession(): UseSessionReturn {
   useEffect(() => {
     if (walletPubKey) {
       void (async () => {
-        const reg = await registryService.getRegistry(walletPubKey, 'local-default')
-        setOnChainRegistry(reg)
+        setRegistryError(null)
+        try {
+          const reg = await registryService.getRegistry(walletPubKey, 'local-default')
+          setOnChainRegistry(reg)
+        } catch (err: any) {
+          setRegistryError(err?.message ?? 'Network error')
+          setOnChainRegistry(null)
+        }
       })()
+    } else {
+      setOnChainRegistry(null)
+      setRegistryError(null)
     }
   }, [walletPubKey])
 
@@ -201,6 +212,7 @@ export function useSession(): UseSessionReturn {
     verified,
     walletPubKey,
     onChainRegistry,
+    registryError,
     lastUnlock,
     lastUnlockSignatureBytes,
     lastVaultRoot,
