@@ -128,6 +128,21 @@ export function useSession(): UseSessionReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Reactivity: listen to global SessionManager events to keep state in sync across components
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleSessionChanged = () => {
+      refresh()
+    }
+
+    window.addEventListener('sj-session-changed', handleSessionChanged as EventListener)
+
+    return () => {
+      window.removeEventListener('sj-session-changed', handleSessionChanged as EventListener)
+    }
+  }, [refresh])
+
   // Actions
   const connectWallet = useCallback(
     async (pubKey: string, provider?: string) => {
