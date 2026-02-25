@@ -141,6 +141,8 @@ const formatBytes = (n: number) => {
 /* Component                                                               */
 /* ---------------------------------- */
 
+import { RegistryPublishWidget } from '../src/components/registry/RegistryPublishWidget'
+
 export default function Home(): JSX.Element {
   // Theme
   const [theme, setTheme] = useState<Theme>('dark')
@@ -674,6 +676,7 @@ export default function Home(): JSX.Element {
             borderRight: `1px solid ${t.border}`,
           }}
         >
+          <RegistryPublishWidget />
           <div style={{ ...styles.leftHeader, color: t.subtext }}>My Files</div>
           <nav style={styles.leftNav}>
             {[

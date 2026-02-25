@@ -62,6 +62,9 @@ const styles: Record<string, React.CSSProperties> = {
  * Props: none (keeps the component intentionally minimal for OQ)
  */
 export default function UnlockVaultButton(): JSX.Element | null {
+  if (process.env.NEXT_PUBLIC_SJ_DEBUG === "true") {
+      console.log("[SJ-DEBUG][UNLOCK] UnlockVaultButton mounted");
+    }
   const wallet = useWallet()
   const {
     isWalletConnected,
@@ -163,6 +166,24 @@ export default function UnlockVaultButton(): JSX.Element | null {
       >
         {loading ? 'Unlocking…' : 'Unlock Vault (required to upload)'}
       </button>
+      {/*<button
+        onClick={() => {
+          console.log("CLICK DIRECT TEST");
+        }}
+        style={{
+          background: "red",
+          color: "white",
+          padding: "14px 20px",
+          borderRadius: 10,
+          border: "none",
+          fontWeight: 800,
+          minWidth: 260,
+          position: "relative",
+          zIndex: 9999
+        }}
+      >
+        TEST CLICK
+        </button>*/}
 
       {error && <div role="alert" style={{ ...styles.msg, marginTop: 8 }}>Error: {error}</div>}
       {!isVaultUnlocked && !loading && (
