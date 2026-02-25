@@ -3,9 +3,6 @@ import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { createHash } from 'crypto';
 import sjRegistryIdl from './idl/sj_registry_program.json';
 
-// Program ID from declare_id! in lib.rs
-export const PROGRAM_ID = new PublicKey("89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd");
-
 export interface RegistryEntry {
   manifestCid: string;
   manifestCidHash: number[];

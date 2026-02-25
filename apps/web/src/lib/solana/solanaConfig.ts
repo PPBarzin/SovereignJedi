@@ -16,12 +16,12 @@ export function getSolanaCluster(): SolanaCluster {
 }
 
 export function getSolanaRpcUrl(): string {
-  // 1. Priority: Explicit override
+  // 1. Priority: Explicit override via NEXT_PUBLIC_SOLANA_RPC_URL
   if (process.env.NEXT_PUBLIC_SOLANA_RPC_URL) {
     return process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
   }
 
-  // 2. Mapping by cluster
+  // 2. Central mapping by cluster (override via NEXT_PUBLIC_SOLANA_RPC_URL if needed)
   const cluster = getSolanaCluster();
   switch (cluster) {
     case 'localnet':
@@ -41,16 +41,8 @@ export function getRegistryProgramId(): PublicKey {
     return new PublicKey(envId);
   }
 
-  const cluster = getSolanaCluster();
-  // For localnet, we can fallback to the hardcoded ID from the latest deployment
-  // if not provided in ENV.
-  if (cluster === 'localnet') {
-    // Current stable localnet ID
-    return new PublicKey('89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd');
-  }
-
-  // For devnet/mainnet, we MUST throw if the ID is missing to avoid silent failures
-  throw new Error(`CRITICAL: NEXT_PUBLIC_SJ_REGISTRY_PROGRAM_ID is missing for cluster ${cluster}.`);
+  // No fallback allowed (strict requirement for all clusters including localnet)
+  throw new Error('CRITICAL: NEXT_PUBLIC_SJ_REGISTRY_PROGRAM_ID is required (including localnet).');
 }
 
 export function getExplorerUrl(txOrAddress: string, type: 'tx' | 'address' = 'tx'): string {
