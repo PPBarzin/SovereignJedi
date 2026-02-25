@@ -518,7 +518,13 @@ export class SessionManager {
    * - Throws on failure (no wallet, no signature, verification failure).
    */
   async unlockVault(): Promise<void> {
+    if (isSjDebugEnabled()) {
+      console.log('[SJ-DEBUG][UNLOCK] unlockVault() entered')
+    }
     if (!this.walletPubKey) {
+      if (isSjDebugEnabled()) {
+        console.log('[SJ-DEBUG][UNLOCK] Early return: Wallet not connected')
+      }
       throw new Error("Wallet not connected");
     }
 
@@ -553,6 +559,11 @@ export class SessionManager {
 
     let unlockSignatureBytes: Uint8Array | null = null;
 
+    // [SJ-DEBUG][UNLOCK] Requesting signature
+    if (isSjDebugEnabled()) {
+      console.log('[SJ-DEBUG][UNLOCK] Requesting signature')
+    }
+
     // Prefer injected wallet-adapter signer when available (reduces popup flicker/races).
     if (this.walletAdapterSigner) {
       unlockSignatureBytes = await this.walletAdapterSigner(unlockMessageBytes);
@@ -584,7 +595,15 @@ export class SessionManager {
     }
 
     if (!unlockSignatureBytes) {
+      if (isSjDebugEnabled()) {
+        console.log('[SJ-DEBUG][UNLOCK] Early return: No signature available from wallet/provider')
+      }
       throw new Error("No signature available from wallet/provider");
+    }
+
+    // [SJ-DEBUG][UNLOCK] Signature received
+    if (isSjDebugEnabled()) {
+      console.log('[SJ-DEBUG][UNLOCK] Signature received')
     }
 
     // Store unlock material in-memory only
