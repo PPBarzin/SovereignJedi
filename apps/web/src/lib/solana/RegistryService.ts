@@ -8,9 +8,9 @@ import {
   RegistryEntry
 } from '@sj/solana-registry';
 import { withRetry } from '../utils/RetryUtils';
+import { getSolanaRpcUrl, getRegistryProgramId } from './solanaConfig';
 
 // Config
-const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
 const RPC_TIMEOUT = parseInt(process.env.NEXT_PUBLIC_SJ_SOLANA_RPC_TIMEOUT_MS || '8000', 10);
 const RPC_RETRIES = parseInt(process.env.NEXT_PUBLIC_SJ_SOLANA_RPC_RETRIES || '2', 10);
 const IPFS_TIMEOUT = parseInt(process.env.NEXT_PUBLIC_SJ_IPFS_TIMEOUT_MS || '12000', 10);
@@ -21,8 +21,8 @@ export class RegistryService {
   private connection: Connection;
 
   constructor() {
-    this.connection = new Connection(RPC_URL, {
-      confirmCommitment: 'confirmed',
+    this.connection = new Connection(getSolanaRpcUrl(), {
+      commitment: 'confirmed',
       fetchMiddleware: async (url, options, next) => {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), RPC_TIMEOUT);
@@ -40,10 +40,11 @@ export class RegistryService {
    */
   async getRegistry(walletPubKey: string, vaultId: string = 'local-default'): Promise<RegistryAccount | null> {
     try {
+      const programId = getRegistryProgramId();
       return await withRetry(
         () => {
           const wallet = new PublicKey(walletPubKey);
-          return fetchRegistry(this.connection, wallet, vaultId);
+          return fetchRegistry(this.connection, wallet, vaultId, programId);
         },
         { 
           retries: RPC_RETRIES, 
@@ -55,7 +56,10 @@ export class RegistryService {
           }
         }
       );
-    } catch (err) {
+    } catch (err: any) {
+      if (process.env.NEXT_PUBLIC_SJ_DEBUG === 'true') {
+        console.error('[RegistryService] Failed to fetch registry', err);
+      }
       return null;
     }
   }
@@ -68,8 +72,8 @@ export class RegistryService {
     if (!entries || entries.length === 0) return null;
     
     return [...entries].sort((a, b) => {
-      const timeA = a.publishedAt.toNumber();
-      const timeB = b.publishedAt.toNumber();
+      const timeA = a.publishedAt;
+      const timeB = b.publishedAt;
       
       if (timeA !== timeB) {
         return timeB - timeA;
@@ -116,7 +120,8 @@ export class RegistryService {
     manifestCid: string,
     manifestSchemaVersion: number = 1
   ): Promise<string> {
-    const program = getProgram(this.connection, wallet);
+    const programId = getRegistryProgramId();
+    const program = getProgram(this.connection, wallet, programId);
     const registry = await this.getRegistry(wallet.publicKey.toBase58(), vaultId);
     
     const { Transaction } = await import('@solana/web3.js');
@@ -127,7 +132,8 @@ export class RegistryService {
         program,
         wallet.publicKey,
         vaultId,
-        manifestSchemaVersion
+        manifestSchemaVersion,
+        programId
       );
       tx.add(initIx);
     }
@@ -137,7 +143,8 @@ export class RegistryService {
       wallet.publicKey,
       vaultId,
       manifestCid,
-      manifestSchemaVersion
+      manifestSchemaVersion,
+      programId
     );
     tx.add(appendIx);
 
@@ -149,3 +156,4 @@ export class RegistryService {
 }
 
 export const registryService = new RegistryService();
+

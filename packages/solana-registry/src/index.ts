@@ -28,7 +28,7 @@ export interface RegistryAccount {
  * Derives the PDA for the registry account.
  * Seeds: ["SJ_REGISTRY_V1", walletPubKey, sha256(vaultId.trim().toLowerCase())]
  */
-export function getRegistryAddress(wallet: PublicKey, vaultId: string): PublicKey {
+export function getRegistryAddress(wallet: PublicKey, vaultId: string, programId: PublicKey = PROGRAM_ID): PublicKey {
   const vaultIdCanonical = vaultId.trim().toLowerCase();
   const vaultIdHash = createHash('sha256').update(vaultIdCanonical).digest();
   
@@ -38,25 +38,31 @@ export function getRegistryAddress(wallet: PublicKey, vaultId: string): PublicKe
       wallet.toBuffer(),
       vaultIdHash,
     ],
-    PROGRAM_ID
+    programId
   );
   return address;
 }
 
-export function getProgram(connection: Connection, wallet: any): Program {
+export function getProgram(connection: Connection, wallet: any, programId: PublicKey = PROGRAM_ID): Program {
   const provider = new AnchorProvider(connection, wallet, {
     preflightCommitment: 'confirmed',
   });
-  return new Program(sjRegistryIdl as any as Idl, provider);
+  const program = new Program(sjRegistryIdl as any as Idl, provider);
+  (program as any)._programId = programId;
+  return program;
 }
 
 export async function fetchRegistry(
   connection: Connection,
   wallet: PublicKey,
-  vaultId: string
+  vaultId: string,
+  programId: PublicKey = PROGRAM_ID
 ): Promise<RegistryAccount | null> {
-  const address = getRegistryAddress(wallet, vaultId);
+  const address = getRegistryAddress(wallet, vaultId, programId);
   const program = new Program(sjRegistryIdl as any as Idl, { connection } as any);
+  // Note: Anchor 0.30+ might ignore the ID in IDL if provider is basic. 
+  // We ensure the ID matches by overriding it if necessary (though usually Idl has it).
+  (program as any)._programId = programId;
   
   try {
     // @ts-ignore - dynamic property access on Idl program
@@ -71,9 +77,10 @@ export async function createInitRegistryInstruction(
   program: Program,
   wallet: PublicKey,
   vaultId: string,
-  manifestSchemaVersion: number = 1
+  manifestSchemaVersion: number = 1,
+  programId: PublicKey = PROGRAM_ID
 ): Promise<TransactionInstruction> {
-  const address = getRegistryAddress(wallet, vaultId);
+  const address = getRegistryAddress(wallet, vaultId, programId);
   const vaultIdCanonical = vaultId.trim().toLowerCase();
   const vaultIdHash = Array.from(createHash('sha256').update(vaultIdCanonical).digest());
   
@@ -92,9 +99,10 @@ export async function createAppendManifestInstruction(
   wallet: PublicKey,
   vaultId: string,
   manifestCid: string,
-  manifestSchemaVersion: number = 1
+  manifestSchemaVersion: number = 1,
+  programId: PublicKey = PROGRAM_ID
 ): Promise<TransactionInstruction> {
-  const address = getRegistryAddress(wallet, vaultId);
+  const address = getRegistryAddress(wallet, vaultId, programId);
   const vaultIdCanonical = vaultId.trim().toLowerCase();
   const vaultIdHash = Array.from(createHash('sha256').update(vaultIdCanonical).digest());
   

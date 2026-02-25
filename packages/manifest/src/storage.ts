@@ -56,7 +56,8 @@ function canonicalizeWalletPubKey(walletPubKey: string): string {
 
 export function buildManifestStorageKey(walletPubKey: string): string {
   const pk = canonicalizeWalletPubKey(walletPubKey)
-  return `${PREFIX}${pk}`
+  const cluster = process.env.NEXT_PUBLIC_SOLANA_CLUSTER || 'devnet'
+  return `${PREFIX}${cluster}:${pk}`
 }
 
 function getDefaultStorageOrThrow(): ManifestStorage {
@@ -78,7 +79,20 @@ export function getManifestCid(walletPubKey: string, storage?: ManifestStorage):
   const s = storage ?? getDefaultStorageOrThrow()
   const pk = canonicalizeWalletPubKey(walletPubKey)
   const key = buildManifestStorageKey(pk)
-  const raw = s.getItem(key)
+  
+  let raw = s.getItem(key)
+
+  // Migration: if new scoped key is missing, check for legacy non-scoped key
+  if (raw == null) {
+    const legacyKey = `${PREFIX}${pk}`
+    const legacyRaw = s.getItem(legacyKey)
+    if (legacyRaw != null && legacyRaw.trim().length > 0) {
+      debugLog('Migrating legacy manifest CID', { walletPubKey: pk, legacyValue: legacyRaw })
+      s.setItem(key, legacyRaw)
+      raw = legacyRaw
+    }
+  }
+
   const cid = raw == null ? null : String(raw).trim()
   const cidFound = cid && cid.length > 0 ? cid : null
 

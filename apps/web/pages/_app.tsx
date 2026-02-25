@@ -4,6 +4,8 @@ import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets'
 import { clusterApiUrl } from '@solana/web3.js'
+import { getSolanaRpcUrl } from '../src/lib/solana/solanaConfig'
+import '../src/lib/solana/solanaConfig' // force initialization logs
 
 // Wallet adapter UI styles (minimal). This package exports a small CSS file
 // required for the WalletModal and WalletMultiButton to render correctly.
@@ -29,16 +31,12 @@ import '@solana/wallet-adapter-react-ui/styles.css'
  *   avoid duplicate registrations (do not instantiate both PhantomWalletAdapter
  *   and the Standard Wallet for Phantom). This keeps the modal free of duplicate
  *   entries and silences the console warning about duplicate registration.
- * - The RPC endpoint is derived from `NEXT_PUBLIC_SOLANA_CLUSTER` with a
- *   `devnet` fallback.
+ * - The RPC endpoint is derived from centralized solanaConfig.
  */
 
 export default function App({ Component, pageProps }: AppProps) {
-  // Resolve cluster (client build-time env injection by Next)
-  const cluster = (process.env.NEXT_PUBLIC_SOLANA_CLUSTER as string) || 'devnet'
-
   // Stable endpoint for ConnectionProvider
-  const endpoint = useMemo(() => clusterApiUrl(cluster as 'devnet' | 'mainnet-beta' | 'testnet'), [cluster])
+  const endpoint = useMemo(() => getSolanaRpcUrl(), [])
 
   // Wallets list (Phantom-only in MVP)
   // Strategy:

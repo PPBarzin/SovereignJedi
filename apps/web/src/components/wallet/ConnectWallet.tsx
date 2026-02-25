@@ -307,7 +307,7 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
                   )}
                   {!localManifestCid && onChainLatestManifestCid && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
-                      <span style={{ ...styles.verifiedBadge, color: tokens.warning }}>Not synced</span>
+                      <span style={{ ...styles.verifiedBadge, color: tokens.warn }}>Not synced</span>
                       <button 
                         onClick={async () => {
                           if (!onChainLatestManifestCid || !walletPubKey) return
@@ -315,9 +315,8 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
                             // Import setManifestCid dynamically to avoid circular dep if any
                             const { setManifestCid } = await import('@sj/manifest')
                             setManifestCid(walletPubKey, onChainLatestManifestCid)
-                            // Trigger refresh to reload manifest
-                            const { refresh } = await import('../../lib/session/useSession')
-                            window.dispatchEvent(new CustomEvent('sj-session-changed'))
+                            // Trigger reactive refresh via global event
+                            window.dispatchEvent(new Event('sj-session-changed'))
                           } catch (err: any) {
                             setError(err?.message ?? String(err))
                           }
