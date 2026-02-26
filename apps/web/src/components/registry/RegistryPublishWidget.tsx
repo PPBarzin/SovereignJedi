@@ -2,8 +2,9 @@
 
 import React, { useMemo, useState } from 'react'
 import { useSession } from '../../lib/session/useSession'
-import { getManifestCid } from '@sj/manifest'
+import { getManifestCid, buildManifestStorageKey } from '@sj/manifest'
 import { registryService } from '../../lib/solana/RegistryService'
+import { getSolanaCluster } from '../../lib/solana/solanaConfig'
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -83,29 +84,44 @@ export const RegistryPublishWidget: React.FC = () => {
   }, [onChainRegistry])
 
   const status = useMemo(() => {
-    if (!walletPubKey) return { label: 'Disconnected', color: '#6b7280', bg: '#37415122' }
-    if (registryError) return { label: 'Network error', color: '#ef4444', bg: '#ef444422' }
-    if (!onChainRegistry || onChainRegistry.entries.length === 0) {
-      return { label: 'Not published', color: '#f59e0b', bg: '#f59e0b22' }
+    let res = { label: 'Unknown', color: '#6b7280', bg: '#37415122' }
+
+    if (!walletPubKey) {
+      res = { label: 'Disconnected', color: '#6b7280', bg: '#37415122' }
+    } else if (registryError) {
+      res = { label: 'Network error', color: '#ef4444', bg: '#ef444422' }
+    } else if (!onChainRegistry || onChainRegistry.entries.length === 0) {
+      res = { label: 'Not published', color: '#f59e0b', bg: '#f59e0b22' }
+    } else if (!localManifestCid) {
+      res = { label: 'No local manifest', color: '#ef4444', bg: '#ef444422' }
+    } else if (localManifestCid === onChainLatestManifestCid) {
+      res = { label: 'Up to date', color: '#10b981', bg: '#10b98122' }
+    } else {
+      // Calculate behind count
+      const localIndex = onChainRegistry.entries.findIndex(e => e.manifestCid === localManifestCid)
+      if (localIndex === -1) {
+        // Local CID is not even in the registry
+        res = { label: 'Out of sync', color: '#3b82f6', bg: '#3b82f622' }
+      } else {
+        // Simple heuristic: if local is in entries but not the latest (head), it's behind.
+        res = { label: 'Published (behind)', color: '#3b82f6', bg: '#3b82f622' }
+      }
     }
-    if (!localManifestCid) {
-      return { label: 'No local manifest', color: '#ef4444', bg: '#ef444422' }
+
+    if (SJ_DEBUG) {
+      console.log("[SJ_DEBUG][RegistryStatus]", {
+        cluster: getSolanaCluster(),
+        wallet: walletPubKey,
+        storageKeyUsed: walletPubKey ? buildManifestStorageKey(walletPubKey) : null,
+        localCid: localManifestCid,
+        headCid: onChainLatestManifestCid,
+        entriesLen: onChainRegistry?.entries?.length ?? 0,
+        status: res.label,
+      });
     }
-    if (localManifestCid === onChainLatestManifestCid) {
-      return { label: 'Up to date', color: '#10b981', bg: '#10b98122' }
-    }
-    
-    // Calculate behind count
-    const localIndex = onChainRegistry.entries.findIndex(e => e.manifestCid === localManifestCid)
-    if (localIndex === -1) {
-      // Local CID is not even in the registry
-      return { label: 'Out of sync', color: '#3b82f6', bg: '#3b82f622' }
-    }
-    
-    // Simple heuristic: if local is in entries but not the latest (head), it's behind.
-    // In our registry, entries are appended. So latest is usually last in array (or sorted by selectHead).
-    return { label: 'Published (behind)', color: '#3b82f6', bg: '#3b82f622' }
-  }, [walletPubKey, onChainRegistry, registryError, localManifestCid, onChainLatestManifestCid])
+
+    return res
+  }, [walletPubKey, onChainRegistry, registryError, localManifestCid, onChainLatestManifestCid, SJ_DEBUG])
 
   const canPublish = useMemo(() => {
     return !!walletPubKey && !!localManifestCid && localManifestCid !== onChainLatestManifestCid && !loading && !registryError
