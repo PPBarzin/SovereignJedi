@@ -37,6 +37,11 @@ export function getRegistryAddress(wallet: PublicKey, vaultId: string, programId
     ],
     programId
   );
+
+  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_SJ_DEBUG === 'true') {
+    console.log("[SJ_DEBUG][Registry] PDA =", address.toBase58());
+  }
+
   return address;
 }
 
