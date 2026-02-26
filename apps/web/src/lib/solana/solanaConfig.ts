@@ -31,7 +31,7 @@ export function getSolanaRpcUrl(): string {
   const cluster = getSolanaCluster();
   switch (cluster) {
     case 'localnet':
-      return 'http://127.0.0.1:1982';
+      return 'http://127.0.0.1:8899';
     case 'devnet':
       return 'https://api.devnet.solana.com';
     case 'mainnet-beta':
@@ -55,7 +55,7 @@ export function getExplorerUrl(txOrAddress: string, type: 'tx' | 'address' = 'tx
   const cluster = getSolanaCluster();
   const base = `https://explorer.solana.com/${type}/${txOrAddress}`;
 
-  if (cluster === 'localnet') return `${base}?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A1982`;
+  if (cluster === 'localnet') return `${base}?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A8899`;
   if (cluster === 'mainnet-beta') return base;
   return `${base}?cluster=${cluster}`;
 }
