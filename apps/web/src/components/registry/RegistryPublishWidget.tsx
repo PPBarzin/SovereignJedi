@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useSession } from '../../lib/session/useSession'
 import { getManifestCid, buildManifestStorageKey } from '@sj/manifest'
 import { registryService } from '../../lib/solana/RegistryService'
@@ -65,15 +65,34 @@ export const RegistryPublishWidget: React.FC = () => {
   const { walletPubKey, onChainRegistry, registryError, publishManifest } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [localManifestCid, setLocalManifestCid] = useState<string | null>(null)
 
   const SJ_DEBUG = String(process.env.NEXT_PUBLIC_SJ_DEBUG).toLowerCase() === 'true'
 
-  const localManifestCid = useMemo(() => {
-    if (!walletPubKey) return null
-    try {
-      return getManifestCid(walletPubKey)
-    } catch {
-      return null
+  useEffect(() => {
+    if (!walletPubKey) {
+      setLocalManifestCid(null)
+      return
+    }
+
+    const refresh = () => {
+      try {
+        setLocalManifestCid(getManifestCid(walletPubKey))
+      } catch {
+        setLocalManifestCid(null)
+      }
+    }
+
+    refresh()
+
+    const handler = (e: any) => {
+      // Optional: filter if necessary (e.g. check e.detail.walletPubKey)
+      refresh()
+    }
+
+    window.addEventListener('sj:manifestCidChanged', handler)
+    return () => {
+      window.removeEventListener('sj:manifestCidChanged', handler)
     }
   }, [walletPubKey])
 

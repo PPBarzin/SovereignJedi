@@ -114,6 +114,17 @@ export function setManifestCid(walletPubKey: string, cid: string, storage?: Mani
 
   s.setItem(key, value)
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('sj:manifestCidChanged', {
+        detail: {
+          walletPubKey: (walletPubKey as any).toBase58?.() ?? walletPubKey,
+          storageKey: key
+        }
+      })
+    )
+  }
+
   debugLog('setManifestCid()', {
     walletPubKey: pk,
     storageKey: key,
