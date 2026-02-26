@@ -22,10 +22,16 @@ export function getSolanaRpcUrl(): string {
   }
 
   // 2. Central mapping by cluster (override via NEXT_PUBLIC_SOLANA_RPC_URL if needed)
+
+  console.log("[SJ_CONFIG]", {
+    cluster: process.env.NEXT_PUBLIC_SOLANA_CLUSTER,
+    rpc: process.env.NEXT_PUBLIC_SOLANA_RPC_URL,
+    programId: process.env.NEXT_PUBLIC_SJ_REGISTRY_PROGRAM_ID,
+  });
   const cluster = getSolanaCluster();
   switch (cluster) {
     case 'localnet':
-      return 'http://127.0.0.1:8899';
+      return 'http://127.0.0.1:1982';
     case 'devnet':
       return 'https://api.devnet.solana.com';
     case 'mainnet-beta':
@@ -48,8 +54,8 @@ export function getRegistryProgramId(): PublicKey {
 export function getExplorerUrl(txOrAddress: string, type: 'tx' | 'address' = 'tx'): string {
   const cluster = getSolanaCluster();
   const base = `https://explorer.solana.com/${type}/${txOrAddress}`;
-  
-  if (cluster === 'localnet') return `${base}?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A8899`;
+
+  if (cluster === 'localnet') return `${base}?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A1982`;
   if (cluster === 'mainnet-beta') return base;
   return `${base}?cluster=${cluster}`;
 }

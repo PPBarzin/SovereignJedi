@@ -72,6 +72,7 @@ pnpm-debug.log*
 *.pem
 secrets/
 private/
+.envrc
 
 # Local npmrc variants (ignore local overrides containing secrets)
 .npmrc.local

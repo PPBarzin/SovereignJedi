@@ -11,7 +11,7 @@ sj_registry_program = "89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "http://127.0.0.1:1982"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

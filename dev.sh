@@ -26,6 +26,7 @@ WEB_DIR="${REPO_ROOT}/apps/web"
 DEV_LOG="${REPO_ROOT}/dev-web.log"
 WEB_URL="http://localhost:1620"
 WEB_PORT=1620
+SOLANA_RPC_URL="${NEXT_PUBLIC_SOLANA_RPC_URL:-http://127.0.0.1:1982}"
 IPFS_API="http://127.0.0.1:5001/api/v0"
 IPFS_VERSION_ENDPOINT="${IPFS_API}/version"
 IPFS_COMPOSE_FILE="${REPO_ROOT}/infra/ipfs/docker-compose.yml"
@@ -196,6 +197,15 @@ else
     warn "IPFS API not available at ${IPFS_API}. UI startup will continue in mock mode."
   else
     ok "IPFS API available at ${IPFS_API}"
+  fi
+fi
+
+# Check Solana RPC availability
+if command -v curl >/dev/null 2>&1; then
+  if curl -sSf --max-time 2 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' "${SOLANA_RPC_URL}" >/dev/null 2>&1; then
+    ok "Solana RPC available at ${SOLANA_RPC_URL}"
+  else
+    warn "Solana RPC not available at ${SOLANA_RPC_URL}. Some features may fail."
   fi
 fi
 
