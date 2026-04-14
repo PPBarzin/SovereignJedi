@@ -142,3 +142,13 @@ yarn.lock
 # If you create local overrides for CI or secrets use a specific pattern, add them above.
 # End of file
 sj_registry_program-keypair.json
+
+# Rust/Anchor build artifacts (fully reproducible via anchor build)
+programs/**/target/
+
+# Solana local test validator data (regenerated on each --reset run)
+test-ledger/
+
+# Cargo backup files
+Cargo.lock.bak
+**/Cargo.lock.bak
