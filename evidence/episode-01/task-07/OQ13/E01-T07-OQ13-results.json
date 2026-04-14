@@ -1,0 +1,27 @@
+{
+  "testId": "E01-T07-OQ13",
+  "timestamp": "2026-04-13T14:46:23.044Z",
+  "commitHash": "16bc1e06336f6a191a00f15c1c66265e74d38ece",
+  "environment": "Unit/Integration with LocalStorage Mocks",
+  "walletPubKey": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+  "beforeRefresh": {
+    "vaultUnlocked": true,
+    "storageKeys": [
+      "sj_verified_v1"
+    ],
+    "hasMemorySecrets": true
+  },
+  "afterRefresh": {
+    "vaultUnlocked": false,
+    "storageKeys": [
+      "sj_verified_v1"
+    ],
+    "hasMemorySecrets": false
+  },
+  "securityCheck": {
+    "secretsInStorage": false,
+    "reUnlockRequired": true,
+    "verifiedSignalWhitelist": "PASS"
+  },
+  "verdict": "PASS"
+}

@@ -165,6 +165,29 @@ export const RegistryPublishWidget: React.FC = () => {
     }
   }
 
+  const handleRestore = async () => {
+    if (!onChainLatestManifestCid || !walletPubKey) return
+    setLoading(true)
+    setError(null)
+    try {
+      if (SJ_DEBUG) {
+        console.log('[SJ-DEBUG][Registry] Restoring manifest pointer from Solana...', { onChainCid: onChainLatestManifestCid })
+      }
+      // Import setManifestCid dynamically
+      const { setManifestCid } = await import('@sj/manifest')
+      setManifestCid(walletPubKey, onChainLatestManifestCid)
+
+      // Notify the app that the session/manifest pointer has changed
+      window.dispatchEvent(new Event('sj-session-changed'))
+      // Local reactive update
+      setLocalManifestCid(onChainLatestManifestCid)
+    } catch (err: any) {
+      setError(err?.message ?? String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -174,15 +197,33 @@ export const RegistryPublishWidget: React.FC = () => {
         </span>
       </div>
       
-      <button 
-        onClick={handlePublish}
-        disabled={!canPublish}
-        style={canPublish ? styles.btn : styles.btnDisabled}
-      >
-        {loading ? 'Publishing...' : 'Publish to Solana'}
-      </button>
+      {localManifestCid ? (
+        <button 
+          onClick={handlePublish}
+          disabled={!canPublish}
+          style={canPublish ? styles.btn : styles.btnDisabled}
+        >
+          {loading ? 'Publishing...' : 'Publish to Solana'}
+        </button>
+      ) : onChainLatestManifestCid ? (
+        <button 
+          onClick={handleRestore}
+          disabled={loading}
+          style={styles.btn}
+        >
+          {loading ? 'Restoring...' : 'Restore from Solana'}
+        </button>
+      ) : (
+        <button 
+          disabled
+          style={styles.btnDisabled}
+        >
+          Not published
+        </button>
+      )}
 
       {error && <div style={styles.error}>Error: {error}</div>}
     </div>
   )
 }
+

@@ -305,28 +305,6 @@ export const ConnectWallet: FC<Props> = ({ onRequestVerify, isVerified }) => {
                       )}
                     </div>
                   )}
-                  {!localManifestCid && onChainLatestManifestCid && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
-                      <span style={{ ...styles.verifiedBadge, color: tokens.warn }}>Not synced</span>
-                      <button 
-                        onClick={async () => {
-                          if (!onChainLatestManifestCid || !walletPubKey) return
-                          try {
-                            // Import setManifestCid dynamically to avoid circular dep if any
-                            const { setManifestCid } = await import('@sj/manifest')
-                            setManifestCid(walletPubKey, onChainLatestManifestCid)
-                            // Trigger reactive refresh via global event
-                            window.dispatchEvent(new Event('sj-session-changed'))
-                          } catch (err: any) {
-                            setError(err?.message ?? String(err))
-                          }
-                        }} 
-                        style={{ ...styles.verifyBtn, background: tokens.btnPrimaryBg, border: tokens.btnPrimaryBorder, color: tokens.btnPrimaryText }}
-                      >
-                        Restore from Solana
-                      </button>
-                    </div>
-                  )}
                 </>
               )}
             </>

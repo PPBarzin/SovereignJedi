@@ -127,6 +127,13 @@ async function getSodium(): Promise<any> {
 function resolveSodiumFromDeps(deps: any): Promise<any> | null {
   // Unit-test hook: allow tests to inject a sodium stub to avoid importing libsodium in Node/Vitest.
   // Production callers should not rely on this.
+  if (deps && deps.sodium) {
+    return (async () => {
+      const s = deps.sodium
+      if (s && s.ready) await s.ready
+      return s
+    })()
+  }
   if (deps && typeof deps.getSodium === 'function') {
     return deps.getSodium()
   }
@@ -156,10 +163,9 @@ function isSjDebugEnabled(): boolean {
 
 type UnlockLike = BuildUnlockResult
 
-export type LoadManifestResult = {
-  manifest: ManifestV1
-  manifestCid: string
-}
+export type LoadManifestResult =
+  | { status: 'loaded' | 'created'; manifest: ManifestV1; manifestCid: string }
+  | { status: 'restore-required'; manifest: null; manifestCid: null }
 
 /**
  * Build the manifest "envelope" that wraps the ManifestKey with the KEK.
@@ -407,10 +413,12 @@ export async function loadManifestOrInit(params: {
   walletPubKey: string
   signatureBytes: Uint8Array
   unlock: BuildUnlockResult
+  onChainLatestManifestCid?: string | null
   deps?: Partial<ManifestServiceDeps>
   origin?: string
   vaultId?: string
   nowMs?: number
+  caller?: string
 }): Promise<LoadManifestResult> {
   const walletPubKey = String(params.walletPubKey ?? '').trim()
   assertNonEmptyString('loadManifestOrInit:walletPubKey', walletPubKey)
@@ -428,19 +436,36 @@ export async function loadManifestOrInit(params: {
   const origin = params.origin ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
   const vaultId = params.vaultId ?? 'local-default'
   const nowMs = params.nowMs ?? Date.now()
+  const caller = params.caller ?? 'loadManifestOrInit'
 
   const existingCid = deps.getManifestCid(walletPubKey)
+  const onChainLatestManifestCid = params.onChainLatestManifestCid ?? null
+
+  const restoreRequired = !existingCid && !!onChainLatestManifestCid
+  const shouldCreateEmptyManifest = !existingCid && !onChainLatestManifestCid
+
   if (isSjDebugEnabled()) {
     // eslint-disable-next-line no-console
-    console.log('[SJ_DEBUG][Manifest]', {
-      walletPubKey,
+    console.log('[SJ_DEBUG][RestoreFlow]', {
+      wallet: walletPubKey,
       vaultId,
-      manifestCidFromStorage: existingCid,
-      action: existingCid ? 'load-existing' : 'init-new',
+      localManifestCid: existingCid,
+      onChainLatestManifestCid,
+      shouldCreateEmptyManifest,
+      restoreRequired,
+      caller,
     })
   }
 
   if (!existingCid) {
+    if (onChainLatestManifestCid) {
+      // MANDATORY (Hardened): Do not create empty manifest if an on-chain one exists.
+      return {
+        status: 'restore-required',
+        manifest: null,
+        manifestCid: null,
+      }
+    }
     // INIT: create empty manifest, derive stable vault-root KEK, derive ManifestKey, wrap it, encrypt manifest, upload, store pointer.
     const createdAt = deps.nowIso()
     const manifest: ManifestV1 = {
@@ -493,7 +518,7 @@ export async function loadManifestOrInit(params: {
 
     deps.setManifestCid(walletPubKey, cid)
 
-    return { manifest, manifestCid: cid }
+    return { status: 'created', manifest, manifestCid: cid }
   }
 
   // LOAD: fetch encrypted object from IPFS, verify integrity, unwrap manifestKey, decrypt.
@@ -524,7 +549,7 @@ export async function loadManifestOrInit(params: {
     walletPubKey,
   })
 
-  return { manifest, manifestCid: existingCid }
+  return { status: 'loaded', manifest, manifestCid: existingCid }
 }
 
 /**
@@ -547,6 +572,7 @@ export async function appendEntryAndPersist(params: {
   signatureBytes: Uint8Array
   unlock: BuildUnlockResult
   entry: Omit<ManifestEntryV1, 'addedAt' | 'entryId'> & Partial<Pick<ManifestEntryV1, 'addedAt' | 'entryId'>>
+  onChainLatestManifestCid: string | null
   deps?: Partial<ManifestServiceDeps>
   origin?: string
   vaultId?: string
@@ -573,13 +599,21 @@ export async function appendEntryAndPersist(params: {
         walletPubKey,
         signatureBytes: params.signatureBytes,
         unlock: params.unlock,
+        onChainLatestManifestCid: params.onChainLatestManifestCid,
         deps,
         origin,
         vaultId,
         nowMs,
+        caller: 'appendEntryAndPersist',
       })
+      
+      if (init.status === 'restore-required') {
+        // Hardening: throw error to prevent any accidental creation or invalid state
+        throw new Error('Restore from Solana required before appending')
+      }
+
       // After init, recursively append within same mutex by continuing.
-      // currentCid should now exist.
+      // currentCid should now exist if status was 'created' or 'loaded'.
     }
 
     const cid = deps.getManifestCid(walletPubKey)

@@ -116,7 +116,12 @@ function canonicalizeJSON(obj: object): string {
  * libsodium resolution (same behavior as @sj/crypto v0_local_encryption)
  * ------------------------- */
 
-async function getSodiumDefault(): Promise<any> {
+async function getSodiumDefault(deps?: any): Promise<any> {
+  if (deps && deps.sodium) {
+    const s = deps.sodium
+    if (s && s.ready) await s.ready
+    return s
+  }
   if (typeof (globalThis as any).sodium !== 'undefined') {
     const g = (globalThis as any).sodium
     if (g && g.ready) {
@@ -151,8 +156,13 @@ function randomBytesDefault(len: number): Uint8Array {
 }
 
 async function resolveSodium(deps?: ManifestCryptoDeps): Promise<any> {
+  if (deps && (deps as any).sodium) {
+    const s = (deps as any).sodium
+    if (s && s.ready) await s.ready
+    return s
+  }
   const getter = deps?.getSodium ?? getSodiumDefault
-  return getter()
+  return getter(deps)
 }
 
 function resolveRandomBytes(deps?: ManifestCryptoDeps): (len: number) => Uint8Array {

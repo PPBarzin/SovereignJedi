@@ -1,0 +1,25 @@
+{
+  "testId": "E01-T07-OQ06",
+  "timestamp": "2026-04-13T12:55:42.429Z",
+  "wallet": "2TAMPDVBG434VxfuQHeHJBosXvSgmPkBZvTCGzFA5M8E",
+  "vaultId": "oq06-vault-hj5bt5",
+  "programId": "89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd",
+  "registryAddress": "7pvQQczjwNtwAFnUJ9JyCEZj2Zy1nSv5P7mLq4D19t4t",
+  "firstAppendSignature": "4TrK69arSizLuV1iQCmuJXVGcRNF5HU9RZFvhsgAiZCq2sxghA6ahWACvydq5bqKEQJNELnauYxgJUE3MtsSMEeX",
+  "duplicateAttemptError": {
+    "message": "Error: Simulation failed. \nMessage: Transaction simulation failed: Error processing Instruction 0: custom program error: 0x1772. \nLogs: \n[\n  \"Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd invoke [1]\",\n  \"Program log: Instruction: AppendManifest\",\n  \"Program log: AnchorError thrown in src/lib.rs:59. Error Code: DuplicateEntry. Error Number: 6002. Error Message: Manifest CID already published..\",\n  \"Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd consumed 11136 of 200000 compute units\",\n  \"Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd failed: custom program error: 0x1772\"\n]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details.",
+    "logs": [
+      "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd invoke [1]",
+      "Program log: Instruction: AppendManifest",
+      "Program log: AnchorError thrown in src/lib.rs:59. Error Code: DuplicateEntry. Error Number: 6002. Error Message: Manifest CID already published..",
+      "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd consumed 11136 of 200000 compute units",
+      "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd failed: custom program error: 0x1772"
+    ]
+  },
+  "verdict": "PASS",
+  "data": {
+    "entriesCount": 1,
+    "updatedAt": "1776084941",
+    "manifestCid": "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3hlgtv7p7n624ki"
+  }
+}

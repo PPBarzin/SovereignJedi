@@ -1,0 +1,70 @@
+{
+  "testId": "E01-T07-OQ15",
+  "timestamp": "2026-04-14T07:46:33.841Z",
+  "commitHash": "16bc1e06336f6a191a00f15c1c66265e74d38ece",
+  "environment": "localnet (127.0.0.1:8899)",
+  "walletPubKey": "Ecs89dz8NsNoSxyUtp54G2HPbmvJr8qZnxnWUqiLT92r",
+  "vaultId": "oq15-latency-test-v1",
+  "pda": "EGkVMY3qAA1RJYmuvZXNZ9VnCJqGZUa4mzzLLoP98CN2",
+  "runs": [
+    {
+      "id": 1,
+      "durationMs": 417.08,
+      "timestamp": "2026-04-14T07:46:29.589Z"
+    },
+    {
+      "id": 2,
+      "durationMs": 423.03,
+      "timestamp": "2026-04-14T07:46:30.006Z"
+    },
+    {
+      "id": 3,
+      "durationMs": 405.04,
+      "timestamp": "2026-04-14T07:46:30.429Z"
+    },
+    {
+      "id": 4,
+      "durationMs": 438.1,
+      "timestamp": "2026-04-14T07:46:30.834Z"
+    },
+    {
+      "id": 5,
+      "durationMs": 422.43,
+      "timestamp": "2026-04-14T07:46:31.272Z"
+    },
+    {
+      "id": 6,
+      "durationMs": 419.58,
+      "timestamp": "2026-04-14T07:46:31.695Z"
+    },
+    {
+      "id": 7,
+      "durationMs": 419.97,
+      "timestamp": "2026-04-14T07:46:32.115Z"
+    },
+    {
+      "id": 8,
+      "durationMs": 404.19,
+      "timestamp": "2026-04-14T07:46:32.535Z"
+    },
+    {
+      "id": 9,
+      "durationMs": 433.85,
+      "timestamp": "2026-04-14T07:46:32.939Z"
+    },
+    {
+      "id": 10,
+      "durationMs": 467.41,
+      "timestamp": "2026-04-14T07:46:33.373Z"
+    }
+  ],
+  "stats": {
+    "count": 10,
+    "min": 404.19,
+    "max": 467.41,
+    "avg": 425.07,
+    "median": 421.2,
+    "targetThresholdMs": 2000
+  },
+  "verdict": "PASS"
+}

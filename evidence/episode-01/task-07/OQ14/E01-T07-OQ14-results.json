@@ -1,0 +1,39 @@
+{
+  "testId": "E01-T07-OQ14",
+  "timestamp": "2026-04-13T15:07:11.529Z",
+  "commitHash": "16bc1e06336f6a191a00f15c1c66265e74d38ece",
+  "environment": "localnet (127.0.0.1:8899)",
+  "wallets": {
+    "owner": "GZXyfzSTCBmA7rpeDLrmUbiSA45H5EEwJhoBeR6ZNb3u",
+    "intruder": "9SKMfAuZCbrG8kfjWviV8zYkuSXeuq2bMseV4J4TNgiu"
+  },
+  "vaultId": "oq14-access-control-v1",
+  "ownerPda": "7g3fLAeAQQjnvj6127HJHFukRJdB29JDUwi4DhQGtWvU",
+  "expectedError": "ConstraintSeeds (0x7d6)",
+  "actualError": "AnchorError caused by account: registry. Error Code: ConstraintSeeds. Error Number: 2006. Error Message: A seeds constraint was violated.",
+  "registryDumps": {
+    "beforeAttack": {
+      "entriesCount": 1,
+      "lastCid": "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3hlgtv7p7n624ki",
+      "updatedAt": "1776092830"
+    },
+    "afterAttack": {
+      "entriesCount": 1,
+      "lastCid": "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3hlgtv7p7n624ki",
+      "updatedAt": "1776092830"
+    }
+  },
+  "registryUnchanged": true,
+  "verdict": "PASS",
+  "logs": [
+    "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd invoke [1]",
+    "Program log: Instruction: AppendManifest",
+    "Program log: AnchorError caused by account: registry. Error Code: ConstraintSeeds. Error Number: 2006. Error Message: A seeds constraint was violated.",
+    "Program log: Left:",
+    "Program log: 7g3fLAeAQQjnvj6127HJHFukRJdB29JDUwi4DhQGtWvU",
+    "Program log: Right:",
+    "Program log: BZotxuZeCcLios3vitULCXnDWGHY5Aj6qvG3uYYSdckh",
+    "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd consumed 5457 of 200000 compute units",
+    "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd failed: custom program error: 0x7d6"
+  ]
+}

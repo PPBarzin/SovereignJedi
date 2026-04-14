@@ -19,6 +19,9 @@
     "canonicalize": "^1.0.0"
   },
   "devDependencies": {
+    "@sj/crypto": "workspace:*",
+    "@sj/ipfs": "workspace:*",
+    "@sj/manifest": "workspace:*",
     "@types/bn.js": "^5.2.0",
     "typescript": "^5.1.6",
     "vitest": "^1.0.0"

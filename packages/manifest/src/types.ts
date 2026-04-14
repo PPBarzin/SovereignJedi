@@ -135,4 +135,7 @@ export type ManifestServiceDeps = {
   // pointer storage (local)
   getManifestCid: (walletPubKey: string) => string | null
   setManifestCid: (walletPubKey: string, cid: string) => void
+
+  // crypto provider (optional override)
+  sodium?: any
 }

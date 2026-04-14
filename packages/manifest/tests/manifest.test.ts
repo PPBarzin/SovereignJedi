@@ -244,6 +244,74 @@ describe('@sj/manifest — crypto', () => {
   })
 })
 
+describe('@sj/manifest — loadManifestOrInit Restore Flow', () => {
+  it('returns restore-required when local CID is missing but on-chain CID is provided', async () => {
+    const walletPubKey = 'wallet-pubkey'
+    const deps = {
+      getManifestCid: vi.fn(() => null),
+      setManifestCid: vi.fn(),
+      addBytes: vi.fn(),
+      nowIso: () => '2026-01-01T00:00:00.000Z',
+    } as any
+
+    const result = await loadManifestOrInit({
+      walletPubKey,
+      signatureBytes: new Uint8Array([1, 2, 3]),
+      unlock: {
+        canonicalObject: { expiresAt: '2099-01-01T00:00:00.000Z' } as any,
+        messageToSign: 'SJ_UNLOCK_V1\n{}',
+      },
+      onChainLatestManifestCid: 'bafy-onchain-cid',
+      deps,
+    })
+
+    expect(result.status).toBe('restore-required')
+    expect(result.manifest).toBeNull()
+    expect(result.manifestCid).toBeNull()
+    expect(deps.setManifestCid).not.toHaveBeenCalled()
+    expect(deps.addBytes).not.toHaveBeenCalled()
+  })
+
+  it('initializes empty manifest when both local and on-chain CID are missing', async () => {
+    const walletPubKey = 'wallet-pubkey'
+    const deps = {
+      getManifestCid: vi.fn(() => null),
+      setManifestCid: vi.fn(),
+      addBytes: vi.fn(async () => ({ cid: 'bafy-new-cid' })),
+      deriveManifestKey: async () => new Uint8Array(32).fill(7),
+      encryptManifestV1: async () => ({
+        version: 1,
+        kind: 'SJ_MANIFEST',
+        header: { cipher: 'XChaCha20-Poly1305', nonce: 'n', aad: { walletPubKey, manifestVersion: 1, context: 'manifest' } },
+        payload: { ciphertextB64: 'c' },
+        envelope: makeEncryptedManifestEnvelope(walletPubKey),
+        integrity: { sha256B64: 'i' },
+      } as any),
+      nowIso: () => '2026-01-01T00:00:00.000Z',
+      getSodium: async () => ({
+        randombytes_buf: (len: number) => new Uint8Array(len).fill(0),
+        crypto_aead_xchacha20poly1305_ietf_encrypt: () => new Uint8Array(32),
+      }),
+    } as any
+
+    const result = await loadManifestOrInit({
+      walletPubKey,
+      signatureBytes: new Uint8Array(64).fill(1), // dummy sig for SJ_VAULT_ROOT_V1
+      unlock: {
+        canonicalObject: { expiresAt: '2099-01-01T00:00:00.000Z' } as any,
+        messageToSign: 'SJ_UNLOCK_V1\n{}',
+      },
+      onChainLatestManifestCid: null,
+      deps,
+    })
+
+    expect(result.status).toBe('created')
+    expect(result.manifest).toBeDefined()
+    expect(result.manifestCid).toBe('bafy-new-cid')
+    expect(deps.setManifestCid).toHaveBeenCalledWith(walletPubKey, 'bafy-new-cid')
+  })
+})
+
 describe('@sj/manifest — service mutex append (MVP)', () => {
   it('unwrap fails with explicit legacy manifest error when messageTemplateId is SJ_UNLOCK_V1', async () => {
     const walletPubKey = 'wallet-pubkey'
@@ -462,6 +530,7 @@ describe('@sj/manifest — service mutex append (MVP)', () => {
       signatureBytes,
       unlock,
       entry: { ...entryBase, fileCid: 'bafy-file-1' },
+      onChainLatestManifestCid: null,
       deps,
       origin: 'http://localhost',
       vaultId: 'local-default',
@@ -473,6 +542,7 @@ describe('@sj/manifest — service mutex append (MVP)', () => {
       signatureBytes,
       unlock,
       entry: { ...entryBase, fileCid: 'bafy-file-2' },
+      onChainLatestManifestCid: null,
       deps,
       origin: 'http://localhost',
       vaultId: 'local-default',
@@ -490,5 +560,42 @@ describe('@sj/manifest — service mutex append (MVP)', () => {
     // Pointer must have been updated to the last uploaded CID
     expect(deps.setManifestCid).toHaveBeenCalled()
     expect(manifestCid).toMatch(/^cid-\d+$/)
+  })
+
+  it('appendEntryAndPersist throws Restore Required error when local CID is missing but on-chain CID is provided (Hardening)', async () => {
+    const walletPubKey = 'wallet-pubkey'
+    const signatureBytes = new Uint8Array([1, 2, 3])
+    const unlock: BuildUnlockResult = {
+      canonicalObject: { expiresAt: '2099-01-01T00:00:00.000Z' } as any,
+      messageToSign: 'SJ_UNLOCK_V1\n{}',
+    }
+
+    const deps = {
+      getManifestCid: vi.fn(() => null),
+      setManifestCid: vi.fn(),
+      addBytes: vi.fn(),
+    } as any
+
+    const entry: Omit<ManifestEntryV1, 'addedAt' | 'entryId'> = {
+      fileCid: 'bafy-file-1',
+      originalFileName: 'a.txt',
+      mimeType: 'text/plain',
+      fileSize: 1,
+      envelope: makeEnvelope({ walletPubKey }),
+    }
+
+    await expect(
+      appendEntryAndPersist({
+        walletPubKey,
+        signatureBytes,
+        unlock,
+        entry,
+        onChainLatestManifestCid: 'bafy-onchain-cid',
+        deps,
+      })
+    ).rejects.toThrow('Restore from Solana required before appending')
+
+    expect(deps.setManifestCid).not.toHaveBeenCalled()
+    expect(deps.addBytes).not.toHaveBeenCalled()
   })
 })

@@ -1,0 +1,19 @@
+{
+  "testId": "E01-T07-OQ11",
+  "timestamp": "2026-04-13T13:43:18.632Z",
+  "commitHash": "16bc1e06336f6a191a00f15c1c66265e74d38ece",
+  "environment": "localnet (Down simulation)",
+  "invalidRpcUrl": "http://127.0.0.1:1",
+  "wallet": "F9kwEkN8eU5Btv9J4qVu2UTYWv3TpVZmJYpz9tmnpXcY",
+  "vaultId": "oq11-rpc-down-test-v1",
+  "publish": {
+    "method": "init_registry (Direct call)",
+    "signatureProduced": null,
+    "errorCaptured": "Error: failed to get recent blockhash: TypeError: fetch failed"
+  },
+  "read": {
+    "resultProduced": null,
+    "errorCaptured": "TypeError: fetch failed"
+  },
+  "verdict": "PASS"
+}

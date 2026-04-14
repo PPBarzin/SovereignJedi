@@ -1,3 +1,0 @@
-solana-cli 3.1.6 (src:63057a7b; feat:2086771155, client:Agave)
-cargo 1.93.1 (083ac5135 2025-12-15)
-anchor-cli 0.32.1

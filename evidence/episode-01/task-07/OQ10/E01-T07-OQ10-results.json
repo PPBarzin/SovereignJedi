@@ -1,0 +1,24 @@
+{
+  "testId": "E01-T07-OQ10",
+  "timestamp": "2026-04-13T13:16:23.045Z",
+  "commitHash": "16bc1e06336f6a191a00f15c1c66265e74d38ece",
+  "environment": "localnet (127.0.0.1:8899)",
+  "wallet": "88gk7vNNY2aiLLBxAG2aE19SLugYvJeNq57Mt7nrFA9D",
+  "vaultId_test": "oq10-integrity-test-vector-v1",
+  "vaultIdHash_valid": "b61fdc341497c7f2ba70c3ef2205965187a354c822cd2569b4256ad8a1659669",
+  "vaultIdHash_invalid": "41d095e8bc08cfa5b5a3b86ffe2c248f768bf910f3ac2a2a52c7b607e2ae72ba",
+  "expectedError": "InvalidVaultIdHash (6003 / 0x1773)",
+  "actualError": "AnchorError thrown in src/lib.rs:25. Error Code: InvalidVaultIdHash. Error Number: 6003. Error Message: Vault ID hash mismatch..",
+  "pdaExists": false,
+  "controlSuccess": true,
+  "verdict": "PASS",
+  "logs": [
+    "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd invoke [1]",
+    "Program log: Instruction: InitRegistry",
+    "Program 11111111111111111111111111111111 invoke [2]",
+    "Program 11111111111111111111111111111111 success",
+    "Program log: AnchorError thrown in src/lib.rs:25. Error Code: InvalidVaultIdHash. Error Number: 6003. Error Message: Vault ID hash mismatch..",
+    "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd consumed 9942 of 200000 compute units",
+    "Program 89J9VYahkHYZhjZpJhAMJ3Aropy7yBMBoX22UGYCQBQd failed: custom program error: 0x1773"
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "testId": "E01-T07-OQ16",
+  "timestamp": "2026-04-14T08:14:57.384Z",
+  "commitHash": "16bc1e06336f6a191a00f15c1c66265e74d38ece",
+  "environment": "localnet (Solana) + local IPFS",
+  "walletPubKey": "823Msawk8dWX1cURDovT6ctcGZ1mxrnHSH2DuiAuca9y",
+  "vaultId": "oq16-restore-latency-v1",
+  "manifestCid": "bafkreie6dstxcjucyfa6dfurpruqb5xhyf6lnp6lbzhwj4iynqzokcvopi",
+  "manifestSize": 1024,
+  "runs": [
+    {
+      "id": 1,
+      "solanaMs": 2.4,
+      "ipfsMs": 1.19,
+      "totalMs": 3.63,
+      "timestamp": "2026-04-14T08:14:57.356Z"
+    },
+    {
+      "id": 2,
+      "solanaMs": 1.69,
+      "ipfsMs": 0.65,
+      "totalMs": 2.35,
+      "timestamp": "2026-04-14T08:14:57.360Z"
+    },
+    {
+      "id": 3,
+      "solanaMs": 1.44,
+      "ipfsMs": 0.93,
+      "totalMs": 2.38,
+      "timestamp": "2026-04-14T08:14:57.363Z"
+    },
+    {
+      "id": 4,
+      "solanaMs": 2.78,
+      "ipfsMs": 1.19,
+      "totalMs": 3.98,
+      "timestamp": "2026-04-14T08:14:57.365Z"
+    },
+    {
+      "id": 5,
+      "solanaMs": 2.56,
+      "ipfsMs": 0.83,
+      "totalMs": 3.39,
+      "timestamp": "2026-04-14T08:14:57.369Z"
+    },
+    {
+      "id": 6,
+      "solanaMs": 1.47,
+      "ipfsMs": 0.68,
+      "totalMs": 2.15,
+      "timestamp": "2026-04-14T08:14:57.373Z"
+    },
+    {
+      "id": 7,
+      "solanaMs": 1.4,
+      "ipfsMs": 0.65,
+      "totalMs": 2.05,
+      "timestamp": "2026-04-14T08:14:57.375Z"
+    },
+    {
+      "id": 8,
+      "solanaMs": 1.64,
+      "ipfsMs": 0.81,
+      "totalMs": 2.45,
+      "timestamp": "2026-04-14T08:14:57.377Z"
+    },
+    {
+      "id": 9,
+      "solanaMs": 1.55,
+      "ipfsMs": 0.62,
+      "totalMs": 2.17,
+      "timestamp": "2026-04-14T08:14:57.380Z"
+    },
+    {
+      "id": 10,
+      "solanaMs": 1.45,
+      "ipfsMs": 0.59,
+      "totalMs": 2.04,
+      "timestamp": "2026-04-14T08:14:57.382Z"
+    }
+  ],
+  "stats": {
+    "count": 10,
+    "min": 2.04,
+    "max": 3.98,
+    "avg": 2.66,
+    "median": 2.37,
+    "targetThresholdMs": 3000
+  },
+  "verdict": "PASS"
+}

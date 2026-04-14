@@ -1,0 +1,66 @@
+{
+  "testId": "E01-T07-OQ12",
+  "timestamp": "2026-04-13T14:23:33.255Z",
+  "commitHash": "16bc1e06336f6a191a00f15c1c66265e74d38ece",
+  "environment": "Unit/Integration with IPFS/Retry Stubs",
+  "retryStrategy": {
+    "maxRetries": 3,
+    "baseBackoffMs": 10,
+    "totalAllowedAttempts": 4
+  },
+  "scenarioA": {
+    "description": "2 timeouts then success",
+    "observedAttempts": 3,
+    "attemptLogs": [
+      {
+        "attempt": 1,
+        "type": "RETRY",
+        "error": "IPFS_TIMEOUT (Simulated)",
+        "nextBackoffMs": 10
+      },
+      {
+        "attempt": 2,
+        "type": "RETRY",
+        "error": "IPFS_TIMEOUT (Simulated)",
+        "nextBackoffMs": 30
+      },
+      {
+        "attempt": 3,
+        "type": "SUCCESS",
+        "result": "Data retrieved"
+      }
+    ],
+    "verdict": "PASS"
+  },
+  "scenarioB": {
+    "description": "Continuous timeouts until exhaustion",
+    "observedAttempts": 4,
+    "attemptLogs": [
+      {
+        "attempt": 1,
+        "type": "RETRY",
+        "error": "IPFS_TIMEOUT (Persistent)",
+        "nextBackoffMs": 10
+      },
+      {
+        "attempt": 2,
+        "type": "RETRY",
+        "error": "IPFS_TIMEOUT (Persistent)",
+        "nextBackoffMs": 30
+      },
+      {
+        "attempt": 3,
+        "type": "RETRY",
+        "error": "IPFS_TIMEOUT (Persistent)",
+        "nextBackoffMs": 90
+      },
+      {
+        "attempt": 4,
+        "type": "TERMINAL_FAILURE",
+        "error": "IPFS_TIMEOUT (Persistent)"
+      }
+    ],
+    "verdict": "PASS"
+  },
+  "verdict": "PASS"
+}

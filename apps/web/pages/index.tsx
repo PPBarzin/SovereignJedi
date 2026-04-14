@@ -366,15 +366,31 @@ export default function Home(): JSX.Element {
 
       refreshInFlightRef.current = true
       try {
-        const { manifest } = await loadManifestOrInit({
+        const onChainLatestManifestCid = (() => {
+          if (!session.onChainRegistry?.entries || session.onChainRegistry.entries.length === 0) return null
+          const { registryService } = require('../src/lib/solana/RegistryService')
+          const head = registryService.selectHead(session.onChainRegistry.entries)
+          return head?.manifestCid ?? null
+        })()
+
+        const { manifest, status } = await loadManifestOrInit({
           walletPubKey,
           signatureBytes: vaultRootSig,
           unlock,
+          onChainLatestManifestCid,
           origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
           vaultId: 'local-default',
         })
 
-        const mapped: FileItem[] = (manifest.entries ?? []).map((e: ManifestEntryV1) => ({
+        if (status === 'restore-required') {
+          debugLog('[SJ_DEBUG][MyFiles] refreshFromManifest status=restore-required')
+          // Stop here: the Restore button in the widget will handle the explicit restore action.
+          setFiles([])
+          setManifestErrorMessage(null)
+          return
+        }
+
+        const mapped: FileItem[] = (manifest?.entries ?? []).map((e: ManifestEntryV1) => ({
           id: e.entryId,
           name: e.originalFileName ?? '(unknown)',
           sizeBytes: e.fileSize ?? 0,
@@ -520,11 +536,19 @@ export default function Home(): JSX.Element {
         fileSize: file.size,
       }
 
+      const onChainLatestManifestCid = (() => {
+        if (!session.onChainRegistry?.entries || session.onChainRegistry.entries.length === 0) return null
+        const { registryService } = require('../src/lib/solana/RegistryService')
+        const head = registryService.selectHead(session.onChainRegistry.entries)
+        return head?.manifestCid ?? null
+      })()
+
       await appendEntryAndPersist({
         walletPubKey,
         signatureBytes: vaultRootSig,
         unlock,
         entry,
+        onChainLatestManifestCid,
         origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
         vaultId: 'local-default',
       })
